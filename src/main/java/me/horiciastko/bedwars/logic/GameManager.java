@@ -818,56 +818,78 @@ public class GameManager {
                 .filter(t -> t.getMembers().stream().anyMatch(p -> p.getGameMode() != GameMode.SPECTATOR))
                 .collect(java.util.stream.Collectors.toList());
 
-        int dragonCount = 0;
-        for (Team t : aliveTeams) {
-            dragonCount++;
-            if (t.getUpgradeLevel("dragon") > 0) {
-                dragonCount++;
+        for (Team team : aliveTeams) {
+            Location spawnLoc;
+            if (team.getSpawnLocation() != null) {
+                spawnLoc = team.getSpawnLocation().clone().add(0, 50, 0);
+            } else if (arena.getLobbyLocation() != null) {
+                spawnLoc = arena.getLobbyLocation().clone().add(0, 50, 0);
+            } else {
+                spawnLoc = world.getSpawnLocation().clone().add(0, 50, 0);
             }
-        }
 
-        dragonCount = Math.min(dragonCount, 10);
-        if (dragonCount < 1)
-            dragonCount = 1;
-
-        for (int i = 0; i < dragonCount; i++) {
-            Location spawnLoc = arena.getLobbyLocation() != null ? arena.getLobbyLocation().clone().add(0, 50, 0)
-                    : world.getSpawnLocation().clone().add(0, 50, 0);
+            String teamColor = (team.getColor() != null) ? team.getColor().toString() : "§f";
+            String teamName = team.getDisplayName();
 
             org.bukkit.entity.EnderDragon dragon = world.spawn(spawnLoc, org.bukkit.entity.EnderDragon.class, d -> {
-                String dragonName = plugin.getLanguageManager().getMessage(null, "entity-sudden-death-dragon");
+                String dragonName = plugin.getLanguageManager().getMessage(null, "entity-sudden-death-dragon-team")
+                        .replace("{TeamColor}", teamColor)
+                        .replace("{TeamName}", teamName);
                 d.setCustomName(dragonName);
                 d.setCustomNameVisible(true);
-                d.setHealth(100.0);
+                d.setHealth(200.0);
                 d.addScoreboardTag("bw_dragon");
+                d.addScoreboardTag("bw_sudden_death");
+                d.addScoreboardTag("team_" + team.getName());
                 d.setPhase(org.bukkit.entity.EnderDragon.Phase.CIRCLING);
             });
 
-            startDragonLogic(dragon, arena);
+            startSuddenDeathDragonLogic(dragon, arena, team);
+
+            if (team.getUpgradeLevel("dragon") > 0) {
+                Location bonusLoc = spawnLoc.clone().add(10, 0, 10);
+                org.bukkit.entity.EnderDragon bonusDragon = world.spawn(bonusLoc, org.bukkit.entity.EnderDragon.class, d -> {
+                    String dragonName = plugin.getLanguageManager().getMessage(null, "entity-sudden-death-dragon-team")
+                            .replace("{TeamColor}", teamColor)
+                            .replace("{TeamName}", teamName + " II");
+                    d.setCustomName(dragonName);
+                    d.setCustomNameVisible(true);
+                    d.setHealth(200.0);
+                    d.addScoreboardTag("bw_dragon");
+                    d.addScoreboardTag("bw_sudden_death");
+                    d.addScoreboardTag("team_" + team.getName());
+                    d.setPhase(org.bukkit.entity.EnderDragon.Phase.CIRCLING);
+                });
+
+                startSuddenDeathDragonLogic(bonusDragon, arena, team);
+            }
         }
     }
 
-    private void startDragonLogic(org.bukkit.entity.EnderDragon dragon, Arena arena) {
+    private void startSuddenDeathDragonLogic(org.bukkit.entity.EnderDragon dragon, Arena arena, Team ownerTeam) {
         new BukkitRunnable() {
-            Player target = null;
+            Location targetLocation = null;
             int ticks = 0;
 
             @Override
             public void run() {
                 if (dragon.isDead() || !dragon.isValid() || arena.getState() != Arena.GameState.IN_GAME) {
+                    if (dragon.isValid() && !dragon.isDead()) {
+                        dragon.remove();
+                    }
                     this.cancel();
                     return;
                 }
 
-                if (ticks % 100 == 0 || target == null || !target.isOnline()
-                        || target.getGameMode() != GameMode.SURVIVAL
-                        || target.getWorld() != dragon.getWorld()) {
-                    target = findNearestTarget(dragon, arena);
+                if (ticks % 100 == 0 || targetLocation == null) {
+                    targetLocation = findNearestEnemyPlayer(dragon, arena, ownerTeam);
+                    if (targetLocation == null) {
+                        targetLocation = findEnemyBedLocation(arena, ownerTeam);
+                    }
                 }
 
-                if (target != null) {
+                if (targetLocation != null) {
                     Location dragonLoc = dragon.getLocation();
-                    Location targetLoc = target.getLocation();
 
                     if (arena.getPos1() != null && arena.getPos2() != null) {
                         double minX = Math.min(arena.getPos1().getX(), arena.getPos2().getX()) - 50;
@@ -889,14 +911,19 @@ public class GameManager {
                     } else if (ticks % 300 == 0) {
                         dragon.setPhase(org.bukkit.entity.EnderDragon.Phase.SEARCH_FOR_BREATH_ATTACK_TARGET);
                     } else if (ticks % 100 == 0) {
-                        dragon.setPhase(org.bukkit.entity.EnderDragon.Phase.FLY_TO_PORTAL);                           
+                        dragon.setPhase(org.bukkit.entity.EnderDragon.Phase.FLY_TO_PORTAL);
                     }
 
-                    if (dragonLoc.distance(targetLoc) > 100) {
-                        org.bukkit.util.Vector toTarget = targetLoc.toVector().subtract(dragonLoc.toVector())
+                    double distance = dragonLoc.distance(targetLocation);
+                    if (distance > 5) {
+                        org.bukkit.util.Vector toTarget = targetLocation.toVector().subtract(dragonLoc.toVector())
                                 .normalize().multiply(1.2);
                         dragon.setVelocity(dragon.getVelocity().add(toTarget));
                     }
+
+                    attackNearbyEnemies(dragon, arena, ownerTeam);
+                    destroyNearbyEnemyBeds(dragon, arena, ownerTeam);
+                    destroyNearbyBlocks(dragon, arena);
                 }
 
                 ticks++;
@@ -904,20 +931,35 @@ public class GameManager {
         }.runTaskTimer(plugin, 20L, 10L);
     }
 
-    private Player findNearestTarget(org.bukkit.entity.EnderDragon dragon, Arena arena) {
-        Player nearest = null;
-        double minDst = Double.MAX_VALUE;
+    private void destroyNearbyBlocks(org.bukkit.entity.EnderDragon dragon, Arena arena) {
+        Location dragonLoc = dragon.getLocation();
+        org.bukkit.World world = dragonLoc.getWorld();
+        if (world == null) return;
 
-        for (Player p : arena.getPlayers()) {
-            if (p.getGameMode() == GameMode.SURVIVAL && p.getWorld().equals(dragon.getWorld())) {
-                double dst = p.getLocation().distanceSquared(dragon.getLocation());
-                if (dst < minDst) {
-                    minDst = dst;
-                    nearest = p;
+        int radius = 4;
+        int centerX = dragonLoc.getBlockX();
+        int centerY = dragonLoc.getBlockY();
+        int centerZ = dragonLoc.getBlockZ();
+
+        for (int x = centerX - radius; x <= centerX + radius; x++) {
+            for (int y = centerY - radius; y <= centerY + radius; y++) {
+                for (int z = centerZ - radius; z <= centerZ + radius; z++) {
+                    org.bukkit.block.Block block = world.getBlockAt(x, y, z);
+                    if (block.getType() == org.bukkit.Material.AIR 
+                        || block.getType() == org.bukkit.Material.BEDROCK
+                        || block.getType().name().endsWith("_BED")) {
+                        continue;
+                    }
+
+                    double distSq = dragonLoc.distanceSquared(block.getLocation().add(0.5, 0.5, 0.5));
+                    if (distSq <= radius * radius) {
+                        world.spawnParticle(org.bukkit.Particle.BLOCK_CRACK, block.getLocation().add(0.5, 0.5, 0.5),
+                                5, 0.3, 0.3, 0.3, block.getBlockData());
+                        block.setType(org.bukkit.Material.AIR);
+                    }
                 }
             }
         }
-        return nearest;
     }
 
     public void spawnTeamDragon(Player player, Arena arena, Location spawnLocation) {
@@ -1128,7 +1170,12 @@ public class GameManager {
         }
 
         if (aliveTeams.size() <= 1) {
-            if (arena.isSoloTest() && arena.getPlayers().size() <= 1) {
+            if (arena.getPlayers().size() == 0) {
+                endGame(arena, null);
+                return;
+            }
+
+            if (arena.isSoloTest() && arena.getPlayers().size() == 1) {
                 return;
             }
 
@@ -1417,6 +1464,7 @@ public class GameManager {
                 plugin.getVisualizationManager().removeGameHolograms(arena);
 
                 arena.reset();
+                arena.setResetting(true);
                 plugin.getSignManager().updateSigns(arena);
 
                 String worldName = arena.getWorldName();
@@ -1472,6 +1520,7 @@ public class GameManager {
                                     } else if (attempts >= 5) {
                                         plugin.getLogger().severe("Failed to unload world " + worldName + " after "
                                                 + attempts + " attempts. Arena reset may fail!");
+                                        arena.setResetting(false);
                                         this.cancel();
                                         plugin.getSignManager().updateSigns(arena);
                                     }
@@ -1489,19 +1538,23 @@ public class GameManager {
                             if (loadedWorld != null) {
                                 loadedWorld.setAutoSave(false);
                                 updateArenaLocations(arena, loadedWorld);
+                                arena.setResetting(false);
                                 plugin.getSignManager().updateSigns(arena);
                                 plugin.getLogger().info("Arena " + arena.getName() + " world loaded successfully.");
                             } else {
                                 plugin.getLogger().severe("Failed to load world: " + worldName + ". Arena "
                                         + arena.getName() + " may be in invalid state!");
+                                arena.setResetting(false);
                             }
                         } else {
                             plugin.getLogger().warning("World folder does not exist: " + worldName
                                     + ". Arena may have invalid configuration.");
+                            arena.setResetting(false);
                         }
                     }
                 } else {
                     plugin.getLogger().warning("Arena " + arena.getName() + " has no world assigned!");
+                    arena.setResetting(false);
                 }
             }
         }.runTaskLater(plugin, 200L);
@@ -1746,6 +1799,7 @@ public class GameManager {
                     plugin.getLogger().warning(
                             "World " + worldName + " is still loaded, cannot reload. Trying to update references...");
                     updateArenaLocations(arena, existingWorld);
+                    arena.setResetting(false);
                     plugin.getSignManager().updateSigns(arena);
                     return;
                 }
@@ -1753,6 +1807,7 @@ public class GameManager {
                 java.io.File worldFolder = new java.io.File(org.bukkit.Bukkit.getWorldContainer(), worldName);
                 if (!worldFolder.exists() || !worldFolder.isDirectory()) {
                     plugin.getLogger().severe("World folder does not exist: " + worldName + ". Cannot reload arena!");
+                    arena.setResetting(false);
                     plugin.getSignManager().updateSigns(arena);
                     return;
                 }
@@ -1764,6 +1819,7 @@ public class GameManager {
                     if (reloadedWorld == null) {
                         plugin.getLogger()
                                 .severe("Failed to reload world: " + worldName + ". Arena may be in invalid state!");
+                        arena.setResetting(false);
                         plugin.getSignManager().updateSigns(arena);
                         return;
                     }
@@ -1778,11 +1834,13 @@ public class GameManager {
                                 .warning("Arena " + arena.getName() + " lobby location is invalid after world reload!");
                     }
 
+                    arena.setResetting(false);
                     plugin.getSignManager().updateSigns(arena);
                     plugin.getLogger().info("Arena " + arena.getName() + " world reloaded successfully.");
                 } catch (Exception e) {
                     plugin.getLogger().severe("Error reloading world " + worldName + ": " + e.getMessage());
                     e.printStackTrace();
+                    arena.setResetting(false);
                     plugin.getSignManager().updateSigns(arena);
                 }
             }

@@ -399,6 +399,11 @@ public class ArenaManager {
             editSessions.remove(player);
             preEditLocations.remove(player);
         } else {
+            if (arena.isResetting()) {
+                player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "arena-resetting"));
+                return;
+            }
+
             Arena currentArena = editSessions.get(player);
             boolean isNewEdit = currentArena == null || !currentArena.getName().equals(arena.getName());
 

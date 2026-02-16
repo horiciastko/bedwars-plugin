@@ -168,6 +168,7 @@ error-not-assigned-team: "&c[Błąd] Nie zostałeś przypisany do żadnej druży
 entity-dream-defender: "&bObrońca Snów"
 entity-bedbug: "&cPluskwa"
 entity-sudden-death-dragon: "&c&lSmok Nagłej Śmierci"
+entity-sudden-death-dragon-team: "&c&l{TeamColor}Smok {TeamName}"
 entity-team-dragon: "&5&l{TeamColor}Smok {TeamName}"
 
 npc-shop: "&6&lSKLEP"
@@ -328,6 +329,10 @@ admin-npc-usage: "&cUżycie: /bw admin npc <typ|remove>"
 admin-npc-types-list: "&7Dostępne typy: &e%types%"
 admin-npc-removed: "&a[BedWars] NPC usunięty pomyślnie!"
 admin-npc-not-found: "&cNie znaleziono NPC BedWars! &7(Patrz bezpośrednio na NPC)"
+admin-npc-none-in-db: "&cNie znaleziono żadnych NPC w bazie danych!"
+admin-npc-list-header: "&e&l=== Samodzielne NPC z bazy danych ==="
+admin-npc-list-entry: "&7ID: &e%id% &7| Typ: &b%type% &7| Lokalizacja: &f%location%"
+admin-npc-list-footer: "&7Teleportuj się w pobliże NPC i spójrz na niego, następnie użyj &e/bw admin npc remove &7aby go usunąć."
 admin-npc-invalid-type: "&cNieprawidłowy typ NPC! Dostępne: &e%types%"
 admin-arena-create-usage: "&cUżycie: /bw admin arena create <nazwa>"
 admin-arena-usage: "&cUżycie: /bw admin arena <create|edit|delete|enable|disable|group> ..."
@@ -532,6 +537,7 @@ arena-setup-incomplete: "&c[BedWars] Najpierw ukończ wszystkie wymagane kroki k
 arena-wand-received: "&a[BedWars] Otrzymano różdżkę wyboru!"
 arena-ready: "&a&l[BedWars] Arena '%name%' jest teraz gotowa!"
 arena-no-world: "&e[BedWars] Nie wybrano jeszcze świata dla tej areny. Użyj GUI aby wybrać."
+arena-resetting: "&c[BedWars] Ta arena jest obecnie resetowana. Proszę czekać..."
 
 # --- Lokalizacje Areny ---
 location-pos1-set: "&a[BedWars] Pozycja 1 areny ustawiona!"

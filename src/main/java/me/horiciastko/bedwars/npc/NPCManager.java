@@ -251,4 +251,12 @@ public class NPCManager {
             }
         }
     }
+
+    public List<DatabaseManager.StandaloneNPCRecord> getAllStandaloneNPCsFromDB() {
+        return plugin.getDatabaseManager().loadStandaloneNPCs();
+    }
+
+    public Map<BedWarsNPC, Integer> getLoadedStandaloneNPCs() {
+        return new HashMap<>(standaloneNpcIds);
+    }
 }

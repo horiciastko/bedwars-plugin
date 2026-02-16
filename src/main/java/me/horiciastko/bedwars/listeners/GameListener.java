@@ -884,6 +884,18 @@ public class GameListener implements Listener {
             return;
         }
 
+        if (event.getEntity() instanceof EnderDragon 
+                && event.getEntity().getScoreboardTags().contains("bw_sudden_death")) {
+            java.util.Iterator<Block> it = event.blockList().iterator();
+            while (it.hasNext()) {
+                Block b = it.next();
+                if (b.getType().name().endsWith("_BED") || b.getType() == org.bukkit.Material.BEDROCK) {
+                    it.remove();
+                }
+            }
+            return;
+        }
+
         java.util.Iterator<Block> it = event.blockList().iterator();
         while (it.hasNext()) {
             Block b = it.next();
@@ -901,13 +913,23 @@ public class GameListener implements Listener {
     @EventHandler
     public void onDragonExplode(EntityExplodeEvent event) {
         if (event.getEntity() instanceof EnderDragon || event.getEntityType() == EntityType.ENDER_DRAGON) {
-
+            if (event.getEntity().getScoreboardTags().contains("bw_sudden_death")) {
+                return;
+            }
         }
     }
 
     @EventHandler
     public void onDragonBlockChange(EntityChangeBlockEvent event) {
         if (event.getEntity() instanceof EnderDragon || event.getEntityType() == EntityType.ENDER_DRAGON) {
+            if (event.getEntity().getScoreboardTags().contains("bw_sudden_death")) {
+                if (event.getBlock().getType().name().endsWith("_BED") 
+                        || event.getBlock().getType() == org.bukkit.Material.BEDROCK) {
+                    event.setCancelled(true);
+                }
+                return;
+            }
+            event.setCancelled(true);
         }
     }
 

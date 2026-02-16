@@ -144,7 +144,28 @@ public class AdminCommand implements SubCommand {
                     plugin.getNpcManager().removeNPC(nearest);
                     player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-removed"));
                 } else {
-                    player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-not-found"));
+                    // Wyświetl listę wszystkich NPC z bazy danych
+                    java.util.List<me.horiciastko.bedwars.logic.DatabaseManager.StandaloneNPCRecord> allNPCs = 
+                        plugin.getNpcManager().getAllStandaloneNPCsFromDB();
+                    
+                    if (allNPCs.isEmpty()) {
+                        player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-none-in-db"));
+                    } else {
+                        player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-list-header"));
+                        for (me.horiciastko.bedwars.logic.DatabaseManager.StandaloneNPCRecord record : allNPCs) {
+                            org.bukkit.Location loc = me.horiciastko.bedwars.utils.SerializationUtils.stringToLocation(record.getLocation());
+                            String locationStr = loc != null 
+                                ? String.format("%s: %.1f, %.1f, %.1f", 
+                                    loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ())
+                                : record.getLocation();
+                            
+                            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-list-entry")
+                                .replace("%id%", String.valueOf(record.getId()))
+                                .replace("%type%", record.getType())
+                                .replace("%location%", locationStr));
+                        }
+                        player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-list-footer"));
+                    }
                 }
                 return;
             }

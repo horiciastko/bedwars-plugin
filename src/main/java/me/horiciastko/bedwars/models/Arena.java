@@ -35,6 +35,7 @@ public class Arena {
     private PvpMode pvpMode = PvpMode.LEGACY_1_8;
     private String group = "Default";
     private boolean enabled = true;
+    private boolean resetting = false;
 
     public enum PvpMode {
         LEGACY_1_8("1.8"), MODERN_1_16("1.16");
@@ -120,6 +121,7 @@ public class Arena {
         diamondCooldown = 0;
         emeraldCooldown = 0;
         soloTest = false;
+        resetting = false;
         placedBlocks.clear();
         players.clear();
 
