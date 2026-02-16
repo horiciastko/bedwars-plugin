@@ -107,6 +107,12 @@ Data persisted in DB includes:
 - arena/team/generator/sign data
 - standalone NPC data
 
+
+##Languages
+
+- English
+- Polish
+
 ## Build from Source
 
 ```bash
