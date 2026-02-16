@@ -26,6 +26,7 @@ arena-send-lobby: "&cThe game has ended! Sending you back to the lobby..."
 # --- Game Interaction ---
 interact-cant-break: "&cYou can only break blocks that were placed by players!"
 interact-cant-build: "&cBuilding is not allowed in this specific area!"
+interact-cant-build-in-base: "&cYou cannot build in %color%%team%&c's base!"
 interact-cant-build-generator: "&cYou are too close to a resource generator to build!"
 interact-cant-destroy-bed: "&cYou cannot destroy your own team's bed!"
 interact-spectator-only: "&cSpectators aren't allowed to interfere with the match!"
@@ -407,6 +408,9 @@ wand-pos1-set: "&a[%color%%team%&a] Base Pos1 set to: &e%location%"
 wand-pos2-set: "&a[%color%%team%&a] Base Pos2 set to: &e%location%"
 wand-region-complete: "&a&lBase region complete! Both corners are now set."
 wand-removed: "&cSelection wand removed. Return to team settings to get a new one."
+wand-no-team-nearby: "&c&l✗ &7No team nearby! Please stand closer to a team spawn or bed."
+wand-base-pos1-set: "&a&l✓ %color%%team% &fBase Pos 1 set to: &e%location%"
+wand-base-pos2-set: "&a&l✓ %color%%team% &fBase Pos 2 set to: &e%location%"
 
 # --- NPC Messages ---
 npc-invalid-mode: "&cInvalid mode configured for this NPC: %mode%"
@@ -555,7 +559,7 @@ arena-list-removed: "&a[BedWars] Arena &e%name% &aremoved."
 
   # --- Scoreboard Lines ---
 scoreboard-lobby-lines:
-  - "&8%date% &7ver. 1.0.0"
+  - "&8%date% &7v%version%"
   - ""
   - "&fRank: %rank%"
   - "&fLevel: %level% &6✫"
@@ -570,7 +574,7 @@ scoreboard-lobby-lines:
   - "&e%server_ip%"
 
 scoreboard-waiting-lines:
-  - "&8%date% &7ver. 1.0.0"
+  - "&8%date% &7v%version%"
   - ""
   - "&fMap: &a%map%"
   - "&fPlayers: &b%players%/%max_players%"
@@ -582,7 +586,7 @@ scoreboard-waiting-lines:
   - "&e%server_ip%"
 
 scoreboard-ingame-lines:
-  - "&8%date% &7ver. 1.0.0"
+  - "&8%date% &7v%version%"
   - "&f%event_name% &b%event_time%"
   - ""
   - "%teams_status%"

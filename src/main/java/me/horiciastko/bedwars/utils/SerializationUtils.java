@@ -10,11 +10,16 @@ public class SerializationUtils {
         if (loc == null)
             return null;
 
-        String worldName = loc.getWorld() != null ? loc.getWorld().getName() : "unknown";
+        String worldName = "unknown";
+        try {
+            if (loc.getWorld() != null) {
+                worldName = loc.getWorld().getName();
+            }
+        } catch (IllegalArgumentException e) {
+        }
         return worldName + "," + loc.getX() + "," + loc.getY() + "," + loc.getZ() + "," + loc.getYaw()
                 + "," + loc.getPitch();
     }
-
 
     public static Location stringToLocation(String s) {
         if (s == null || s.isEmpty())
@@ -35,7 +40,6 @@ public class SerializationUtils {
         return new Location(world, x, y, z, yaw, pitch);
     }
 
-
     public static double[] parseLocationCoords(String s) {
         if (s == null || s.isEmpty())
             return null;
@@ -53,7 +57,6 @@ public class SerializationUtils {
             return null;
         }
     }
-
 
     public static String extractWorldName(String s) {
         if (s == null || s.isEmpty())

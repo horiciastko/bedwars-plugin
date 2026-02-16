@@ -613,6 +613,8 @@ public class ShopGUI extends BaseGUI {
                         me.horiciastko.bedwars.utils.ItemTagUtils.setTag(giving, "special_item", "tower");
                     } else if (itemData.getName().equals("bridge_egg")) {
                         me.horiciastko.bedwars.utils.ItemTagUtils.setTag(giving, "special_item", "bridge_egg");
+                    } else if (itemData.getName().equals("tracker")) {
+                        me.horiciastko.bedwars.utils.ItemTagUtils.setTag(giving, "special_item", "tracker");
                     }
                 }
             }

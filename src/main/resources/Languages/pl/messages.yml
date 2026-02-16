@@ -26,6 +26,7 @@ arena-send-lobby: "&cGra się zakończyła! Wysyłanie do lobby..."
 # --- Interakcje w Grze ---
 interact-cant-break: "&cMożesz niszczyć tylko bloki postawione przez graczy!"
 interact-cant-build: "&cBudowa nie jest dozwolona w tym obszarze!"
+interact-cant-build-in-base: "&cNie możesz budować w bazie drużyny %color%%team%&c!"
 interact-cant-build-generator: "&cJesteś za blisko generatora zasobów, aby budować!"
 interact-cant-destroy-bed: "&cNie możesz zniszczyć łóżka własnej drużyny!"
 interact-spectator-only: "&cObserwatorzy nie mogą ingerować w mecz!"
@@ -407,6 +408,9 @@ wand-pos1-set: "&a[%color%%team%&a] Baza Poz1 ustawiona na: &e%location%"
 wand-pos2-set: "&a[%color%%team%&a] Baza Poz2 ustawiona na: &e%location%"
 wand-region-complete: "&a&lRegion bazy kompletny! Oba narożniki są teraz ustawione."
 wand-removed: "&cRóżdżka usunięta. Wróć do ustawień drużyny aby otrzymać nową."
+wand-no-team-nearby: "&c&l✗ &7Brak drużyny w pobliżu! Podejdź bliżej spawnu lub łóżka drużyny."
+wand-base-pos1-set: "&a&l✓ %color%%team% &fBaza Poz 1 ustawiona na: &e%location%"
+wand-base-pos2-set: "&a&l✓ %color%%team% &fBaza Poz 2 ustawiona na: &e%location%"
 
 # --- Wiadomości NPC ---
 npc-invalid-mode: "&cNieprawidłowy tryb skonfigurowany dla tego NPC: %mode%"
@@ -556,7 +560,7 @@ arena-list-removed: "&a[BedWars] Arena &e%name% &ausunięta."
 
   # --- Linie Scoreboard ---
 scoreboard-lobby-lines:
-  - "&8%date% &7wer. 1.0.0"
+  - "&8%date% &7v%version%"
   - ""
   - "&fRanga: %rank%"
   - "&fPoziom: %level% &6✫"
@@ -571,7 +575,7 @@ scoreboard-lobby-lines:
   - "&e%server_ip%"
 
 scoreboard-waiting-lines:
-  - "&8%date% &7wer. 1.0.0"
+  - "&8%date% &7v%version%"
   - ""
   - "&fMapa: &a%map%"
   - "&fGraczy: &b%players%/%max_players%"
@@ -583,7 +587,7 @@ scoreboard-waiting-lines:
   - "&e%server_ip%"
 
 scoreboard-ingame-lines:
-  - "&8%date% &7wer. 1.0.0"
+  - "&8%date% &7v%version%"
   - "&f%event_name% &b%event_time%"
   - ""
   - "%teams_status%"

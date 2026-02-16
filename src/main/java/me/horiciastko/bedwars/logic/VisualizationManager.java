@@ -70,7 +70,7 @@ public class VisualizationManager {
     }
 
     private void addHologram(List<ArmorStand> list, Location loc, String text, UUID playerUuid) {
-        if (loc == null || loc.getWorld() == null)
+        if (!isWorldLoaded(loc))
             return;
 
         ArmorStand stand = createArmorStand(loc, text, playerUuid);
@@ -233,6 +233,8 @@ public class VisualizationManager {
 
     private List<ArmorStand> createGeneratorVisual(Location loc, String name, org.bukkit.Material block) {
         List<ArmorStand> list = new ArrayList<>();
+        if (!isWorldLoaded(loc))
+            return list;
         Location base = loc.getBlock().getLocation().add(0.5, 0, 0.5);
 
         ArmorStand head = (ArmorStand) base.getWorld().spawn(base.clone().add(0, 2.3, 0), ArmorStand.class,
@@ -283,7 +285,7 @@ public class VisualizationManager {
     }
 
     private ArmorStand createGameArmorStand(Location loc, String text) {
-        if (loc.getWorld() == null)
+        if (!isWorldLoaded(loc))
             return null;
 
         Location displayLoc = loc.clone();
@@ -324,6 +326,16 @@ public class VisualizationManager {
                     entity.remove();
                 }
             }
+        }
+    }
+
+    private boolean isWorldLoaded(Location loc) {
+        if (loc == null)
+            return false;
+        try {
+            return loc.getWorld() != null;
+        } catch (IllegalArgumentException e) {
+            return false;
         }
     }
 }

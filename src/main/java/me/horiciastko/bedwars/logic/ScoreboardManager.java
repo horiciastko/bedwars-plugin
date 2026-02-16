@@ -57,8 +57,9 @@ public class ScoreboardManager {
         }
 
         List<String> linesTemplate;
+        Arena editArena = plugin.getArenaManager().getEditArena(player);
+
         if (arena == null) {
-            Arena editArena = plugin.getArenaManager().getEditArena(player);
             if (editArena != null) {
                 linesTemplate = new ArrayList<>();
                 linesTemplate.add("§7" + LocalDateTime.now().format(dateFormatter));
@@ -71,7 +72,7 @@ public class ScoreboardManager {
                 linesTemplate.add("§fMax Players: §a" + editArena.getMaxPlayers());
                 linesTemplate.add("§fMin Players: §a" + editArena.getMinPlayers());
                 linesTemplate.add(" ");
-                linesTemplate.add("§eplay.bedwars.pl");
+                linesTemplate.add("%server_ip%");
             } else {
                 linesTemplate = plugin.getLanguageManager().getMessageList(player.getUniqueId(),
                         "scoreboard-lobby-lines");
@@ -96,7 +97,7 @@ public class ScoreboardManager {
             if (line.contains("%teams_status%")) {
                 currentLines.addAll(formatTeamsStatus(player, arena));
             } else {
-                currentLines.add(replacePlaceholders(line, player, arena));
+                currentLines.add(replacePlaceholders(line, player, editArena != null ? editArena : arena));
             }
         }
 
@@ -136,6 +137,7 @@ public class ScoreboardManager {
         String result = line
                 .replace("%date%", LocalDateTime.now().format(dateFormatter))
                 .replace("%server_ip%", plugin.getConfig().getString("server.ip", "play.bedwars.pl"))
+                .replace("%version%", plugin.getConfig().getString("server.version", "1.0.0"))
                 .replace("%global_players%", String.valueOf(Bukkit.getOnlinePlayers().size()))
                 .replace("%rank%", stats.getRank())
                 .replace("%level%", String.valueOf(stats.getLevel()))
@@ -157,20 +159,25 @@ public class ScoreboardManager {
             String statusStr;
             switch (arena.getState()) {
                 case WAITING:
-                    statusStr = plugin.getLanguageManager().getMessage(player.getUniqueId(), "scoreboard-status-waiting");
+                    statusStr = plugin.getLanguageManager().getMessage(player.getUniqueId(),
+                            "scoreboard-status-waiting");
                     break;
                 case STARTING:
-                    statusStr = plugin.getLanguageManager().getMessage(player.getUniqueId(), "scoreboard-status-starting")
+                    statusStr = plugin.getLanguageManager()
+                            .getMessage(player.getUniqueId(), "scoreboard-status-starting")
                             .replace("%time%", String.valueOf(plugin.getGameManager().getStartTimer(arena)));
                     break;
                 case IN_GAME:
-                    statusStr = plugin.getLanguageManager().getMessage(player.getUniqueId(), "scoreboard-status-ingame");
+                    statusStr = plugin.getLanguageManager().getMessage(player.getUniqueId(),
+                            "scoreboard-status-ingame");
                     break;
                 case ENDING:
-                    statusStr = plugin.getLanguageManager().getMessage(player.getUniqueId(), "scoreboard-status-ending");
+                    statusStr = plugin.getLanguageManager().getMessage(player.getUniqueId(),
+                            "scoreboard-status-ending");
                     break;
                 default:
-                    statusStr = plugin.getLanguageManager().getMessage(player.getUniqueId(), "scoreboard-status-unknown");
+                    statusStr = plugin.getLanguageManager().getMessage(player.getUniqueId(),
+                            "scoreboard-status-unknown");
                     break;
             }
 

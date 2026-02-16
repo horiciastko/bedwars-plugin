@@ -298,8 +298,6 @@ public class ArenaSettingsGUI extends BaseGUI {
                 org.bukkit.inventory.meta.ItemMeta meta = stick.getItemMeta();
                 if (meta != null) {
                         meta.setDisplayName("§e§lBase Selection Wand");
-                        stick.setItemMeta(meta);
-                        me.horiciastko.bedwars.utils.ItemTagUtils.setTag(stick, "special_item", "base_selection_tool");
                         java.util.List<String> lore = new java.util.ArrayList<>();
                         lore.add("§7Arena: §b" + arena.getName());
                         lore.add("");
@@ -309,6 +307,7 @@ public class ArenaSettingsGUI extends BaseGUI {
                         meta.setLore(lore);
                         stick.setItemMeta(meta);
                 }
+                me.horiciastko.bedwars.utils.ItemTagUtils.setTag(stick, "special_item", "base_selection_tool");
                 player.getInventory().addItem(stick);
                 player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(player.getUniqueId(), "arena-wand-received"));
                 player.closeInventory();

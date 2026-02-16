@@ -22,7 +22,7 @@ public class LobbyListener implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Location lobby = plugin.getGameManager().getMainLobbyLocation();
-        if (lobby != null) {
+        if (isWorldLoaded(lobby)) {
             event.getPlayer().teleport(lobby);
         }
 
@@ -32,28 +32,41 @@ public class LobbyListener implements Listener {
     @EventHandler
     public void onRespawn(PlayerRespawnEvent event) {
         Location lobby = plugin.getGameManager().getMainLobbyLocation();
-        if (lobby != null) {
+        if (isWorldLoaded(lobby)) {
             event.setRespawnLocation(lobby);
         }
     }
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onVoidDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player)) return;
-        if (event.getCause() != EntityDamageEvent.DamageCause.VOID) return;
+        if (!(event.getEntity() instanceof Player))
+            return;
+        if (event.getCause() != EntityDamageEvent.DamageCause.VOID)
+            return;
 
         Player player = (Player) event.getEntity();
         Arena arena = plugin.getArenaManager().getPlayerArena(player);
 
-        if (arena != null && arena.getState() == Arena.GameState.IN_GAME) return;
+        if (arena != null && arena.getState() == Arena.GameState.IN_GAME)
+            return;
 
         event.setCancelled(true);
         Location lobby = plugin.getGameManager().getMainLobbyLocation();
-        if (lobby != null) {
+        if (isWorldLoaded(lobby)) {
             player.teleport(lobby);
             player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "void-teleport-lobby"));
         } else {
             player.teleport(player.getWorld().getSpawnLocation());
+        }
+    }
+
+    private boolean isWorldLoaded(Location loc) {
+        if (loc == null)
+            return false;
+        try {
+            return loc.getWorld() != null;
+        } catch (IllegalArgumentException e) {
+            return false;
         }
     }
 }

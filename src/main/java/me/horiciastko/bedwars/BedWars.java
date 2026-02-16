@@ -110,6 +110,7 @@ public class BedWars extends JavaPlugin {
         this.npcManager.loadStandaloneNPCsFromDatabase();
 
         new GeneratorTask(this).runTaskTimer(this, 0L, 1L);
+        new me.horiciastko.bedwars.logic.CompassTracker(this).runTaskTimer(this, 0L, 10L);
 
         for (org.bukkit.World world : org.bukkit.Bukkit.getWorlds()) {
             this.gameManager.prepareWorldRules(world);

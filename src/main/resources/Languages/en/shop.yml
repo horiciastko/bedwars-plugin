@@ -498,6 +498,16 @@ sections:
         cost: 4
         currency: EMERALD
         slot: 24
+      tracker:
+        material: COMPASS
+        name: "&fPlayer Tracker"
+        amount: 1
+        cost: 2
+        currency: EMERALD
+        slot: 25
+        lore:
+          - "&7Right-click to track"
+          - "&7the nearest enemy!"
       bridge_egg:
         material: EGG
         name: "&fBridge Egg"

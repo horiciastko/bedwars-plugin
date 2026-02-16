@@ -27,9 +27,8 @@ database:
 server:
   ip: "play.yourserver.net"
   id: "1"
-  version: "1.0.0"
+  version: "1.0.2"
 
-# Holographic displays
 # These appear above team beds to show their status.
 # Hologram text is defined in Languages/*/messages.yml (hologram-team-line1, hologram-team-line2, hologram-eliminated-line1)
 holographic-beds:

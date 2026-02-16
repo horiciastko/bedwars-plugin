@@ -497,6 +497,16 @@ sections:
         cost: 4
         currency: EMERALD
         slot: 24
+      tracker:
+        material: COMPASS
+        name: "&fŚledzenie Graczy"
+        amount: 1
+        cost: 2
+        currency: EMERALD
+        slot: 25
+        lore:
+          - "&7Kliknij PPM aby śledzić"
+          - "&7najbliższego wroga!"
       bridge_egg:
         material: EGG
         name: "&fJajko Mostu"

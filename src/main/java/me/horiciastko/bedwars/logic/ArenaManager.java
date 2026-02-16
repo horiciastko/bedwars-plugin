@@ -143,6 +143,14 @@ public class ArenaManager {
                             team.setBasePos2(SerializationUtils
                                     .stringToLocationWithWorldName(rsTeams.getString("base_pos2"), worldName));
 
+                            // Debug log for base positions
+                            if (team.getBasePos1() != null || team.getBasePos2() != null) {
+                                plugin.getLogger().info("Loaded base positions for team " + teamName + 
+                                    " in arena " + name + 
+                                    " - Pos1: " + (team.getBasePos1() != null ? team.getBasePos1().toString() : "null") +
+                                    ", Pos2: " + (team.getBasePos2() != null ? team.getBasePos2().toString() : "null"));
+                            }
+
                             distinctTeams.put(teamName.toLowerCase(), team);
                         }
 
@@ -280,6 +288,15 @@ public class ArenaManager {
                         psTeam.setString(8, SerializationUtils.locationToString(team.getUpgradeLocation()));
                         psTeam.setString(9, SerializationUtils.locationToString(team.getBasePos1()));
                         psTeam.setString(10, SerializationUtils.locationToString(team.getBasePos2()));
+                        
+                        // Debug log when saving base positions
+                        if (team.getBasePos1() != null || team.getBasePos2() != null) {
+                            plugin.getLogger().info("Saving base positions for team " + team.getName() + 
+                                " in arena " + arena.getName() + 
+                                " - Pos1: " + (team.getBasePos1() != null ? team.getBasePos1().toString() : "null") +
+                                ", Pos2: " + (team.getBasePos2() != null ? team.getBasePos2().toString() : "null"));
+                        }
+                        
                         psTeam.addBatch();
                     }
                     psTeam.executeBatch();

@@ -144,7 +144,6 @@ public class AdminCommand implements SubCommand {
                     plugin.getNpcManager().removeNPC(nearest);
                     player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-removed"));
                 } else {
-                    // Wyświetl listę wszystkich NPC z bazy danych
                     java.util.List<me.horiciastko.bedwars.logic.DatabaseManager.StandaloneNPCRecord> allNPCs = 
                         plugin.getNpcManager().getAllStandaloneNPCsFromDB();
                     

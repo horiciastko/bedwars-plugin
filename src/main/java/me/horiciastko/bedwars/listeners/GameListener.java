@@ -39,6 +39,34 @@ public class GameListener implements Listener {
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST)
     public void onBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
+
+        ItemStack item = player.getInventory().getItemInHand();
+        if (item != null && item.getType() == Material.STICK && item.hasItemMeta()) {
+            String special = me.horiciastko.bedwars.utils.ItemTagUtils.getTag(item, "special_item");
+            if ("base_selection_tool".equals(special)) {
+                event.setCancelled(true);
+                Arena editArena = BedWars.getInstance().getArenaManager().getEditArena(player);
+                if (editArena != null) {
+                    Team targetTeam = findClosestTeam(editArena, event.getBlock().getLocation());
+                    if (targetTeam == null) {
+                        player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                                player.getUniqueId(), "wand-no-team-nearby"));
+                    } else {
+                        targetTeam.setBasePos1(event.getBlock().getLocation());
+                        String location = event.getBlock().getX() + ", " + event.getBlock().getY() + ", "
+                                + event.getBlock().getZ();
+                        player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                                player.getUniqueId(), "wand-base-pos1-set")
+                                .replace("%color%", targetTeam.getColor().toString())
+                                .replace("%team%", targetTeam.getDisplayName())
+                                .replace("%location%", location));
+                        BedWars.getInstance().getArenaManager().saveArena(editArena);
+                    }
+                }
+                return;
+            }
+        }
+
         if (BedWars.getInstance().getGameManager().isInBuildMode(player)) {
             return;
         }
@@ -159,9 +187,9 @@ public class GameListener implements Listener {
 
     private void clearBedBlocks(Block block) {
         block.setType(Material.AIR);
-        for (org.bukkit.block.BlockFace face : new org.bukkit.block.BlockFace[]{
+        for (org.bukkit.block.BlockFace face : new org.bukkit.block.BlockFace[] {
                 org.bukkit.block.BlockFace.NORTH, org.bukkit.block.BlockFace.SOUTH,
-                org.bukkit.block.BlockFace.EAST, org.bukkit.block.BlockFace.WEST}) {
+                org.bukkit.block.BlockFace.EAST, org.bukkit.block.BlockFace.WEST }) {
             Block adjacent = block.getRelative(face);
             if (adjacent.getType().name().endsWith("_BED")) {
                 adjacent.setType(Material.AIR);
@@ -172,6 +200,16 @@ public class GameListener implements Listener {
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
+        
+        ItemStack item = player.getInventory().getItemInHand();
+        if (item != null && item.getType() == Material.STICK && item.hasItemMeta()) {
+            String special = me.horiciastko.bedwars.utils.ItemTagUtils.getTag(item, "special_item");
+            if ("base_selection_tool".equals(special)) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+        
         if (BedWars.getInstance().getGameManager().isInBuildMode(player)) {
             return;
         }
@@ -183,9 +221,15 @@ public class GameListener implements Listener {
         }
 
         for (Team t : arena.getTeams()) {
-            if (isInside(event.getBlock().getLocation(), t.getBasePos1(), t.getBasePos2())) {
-                event.setCancelled(true);
-                return;
+            if (t.getBasePos1() != null && t.getBasePos2() != null) {
+                if (isInside(event.getBlock().getLocation(), t.getBasePos1(), t.getBasePos2())) {
+                    event.setCancelled(true);
+                    player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                            player.getUniqueId(), "interact-cant-build-in-base")
+                            .replace("%color%", t.getColor().toString())
+                            .replace("%team%", t.getDisplayName()));
+                    return;
+                }
             }
         }
 
@@ -207,6 +251,20 @@ public class GameListener implements Listener {
         }
 
         if (event.getBlock().getType() == Material.TNT) {
+            Team playerTeam = BedWars.getInstance().getGameManager().getPlayerTeam(arena, player);
+            if (playerTeam != null) {
+                for (Team t : arena.getTeams()) {
+                    if (!t.getName().equals(playerTeam.getName())) {
+                        if (isInside(event.getBlock().getLocation(), t.getBasePos1(), t.getBasePos2())) {
+                            event.setCancelled(true);
+                            player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                                    player.getUniqueId(), "interact-cant-build"));
+                            return;
+                        }
+                    }
+                }
+            }
+            
             event.setCancelled(true);
             if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) {
                 event.getItemInHand().setAmount(event.getItemInHand().getAmount() - 1);
@@ -251,13 +309,13 @@ public class GameListener implements Listener {
         }
 
         if (event.getBlock().getType() == Material.CHEST) {
-            ItemStack item = event.getItemInHand();
-            if (item != null && item.hasItemMeta()) {
-                String special = me.horiciastko.bedwars.utils.ItemTagUtils.getTag(item, "special_item");
+            ItemStack chestItem = event.getItemInHand();
+            if (chestItem != null && chestItem.hasItemMeta()) {
+                String special = me.horiciastko.bedwars.utils.ItemTagUtils.getTag(chestItem, "special_item");
                 if ("tower".equals(special)) {
                     event.setCancelled(true);
                     if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) {
-                        item.setAmount(item.getAmount() - 1);
+                        chestItem.setAmount(chestItem.getAmount() - 1);
                     }
                     me.horiciastko.bedwars.utils.TowerBuilder.build(player, arena, event.getBlock().getLocation());
                     return;
@@ -271,8 +329,15 @@ public class GameListener implements Listener {
     private boolean isInside(org.bukkit.Location loc, org.bukkit.Location p1, org.bukkit.Location p2) {
         if (p1 == null || p2 == null || loc == null)
             return false;
-        if (!loc.getWorld().getName().equals(p1.getWorld().getName()))
+
+        try {
+            if (loc.getWorld() == null || p1.getWorld() == null)
+                return false;
+            if (!loc.getWorld().getName().equals(p1.getWorld().getName()))
+                return false;
+        } catch (IllegalArgumentException e) {
             return false;
+        }
         double minX = Math.min(p1.getX(), p2.getX());
         double maxX = Math.max(p1.getX(), p2.getX());
         double minY = Math.min(p1.getY(), p2.getY());
@@ -302,7 +367,8 @@ public class GameListener implements Listener {
                 Location lobby = BedWars.getInstance().getGameManager().getMainLobbyLocation();
                 if (lobby != null) {
                     player.teleport(lobby);
-                    player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(player.getUniqueId(), "void-teleport-lobby"));
+                    player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(player.getUniqueId(),
+                            "void-teleport-lobby"));
                 }
             }
             return;
@@ -459,39 +525,49 @@ public class GameListener implements Listener {
         Arena arena = BedWars.getInstance().getArenaManager().getPlayerArena(player);
 
         ItemStack item = event.getItem();
-        if (item != null && item.getType() == Material.STICK && item.hasItemMeta() && event.getClickedBlock() != null) {
+        if (item != null && item.getType() == Material.STICK && item.hasItemMeta()) {
             String special = me.horiciastko.bedwars.utils.ItemTagUtils.getTag(item, "special_item");
 
             if ("base_selection_tool".equals(special)) {
+                event.setCancelled(true);
+                
+                if (event.getClickedBlock() == null) {
+                    return;
+                }
+                
                 Arena editArena = BedWars.getInstance().getArenaManager().getEditArena(player);
                 if (editArena == null) {
                     player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(player.getUniqueId(),
                             "interact-edit-mode-required"));
-                    event.setCancelled(true);
                     return;
                 }
-
                 Team targetTeam = findClosestTeam(editArena, event.getClickedBlock().getLocation());
+
                 if (targetTeam == null) {
-                    player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(player.getUniqueId(),
-                            "interact-no-team-nearby"));
-                    event.setCancelled(true);
+                    player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                            player.getUniqueId(), "wand-no-team-nearby"));
                     return;
                 }
 
-                event.setCancelled(true);
+                String location = event.getClickedBlock().getX() + ", " + event.getClickedBlock().getY() + ", "
+                        + event.getClickedBlock().getZ();
+                String teamColor = targetTeam.getColor().toString();
+                String teamName = targetTeam.getDisplayName();
+
                 if (event.getAction() == Action.LEFT_CLICK_BLOCK) {
                     targetTeam.setBasePos1(event.getClickedBlock().getLocation());
-                    player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(player.getUniqueId(),
-                            "interact-base-pos-set").replace("%pos%", "1")
-                            .replace("%color%", targetTeam.getColor().toString())
-                            .replace("%team%", targetTeam.getName()));
+                    player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                            player.getUniqueId(), "wand-base-pos1-set")
+                            .replace("%color%", teamColor)
+                            .replace("%team%", teamName)
+                            .replace("%location%", location));
                 } else if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
                     targetTeam.setBasePos2(event.getClickedBlock().getLocation());
-                    player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(player.getUniqueId(),
-                            "interact-base-pos-set").replace("%pos%", "2")
-                            .replace("%color%", targetTeam.getColor().toString())
-                            .replace("%team%", targetTeam.getName()));
+                    player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                            player.getUniqueId(), "wand-base-pos2-set")
+                            .replace("%color%", teamColor)
+                            .replace("%team%", teamName)
+                            .replace("%location%", location));
                 }
                 BedWars.getInstance().getArenaManager().saveArena(editArena);
                 return;
@@ -545,15 +621,46 @@ public class GameListener implements Listener {
             } else if (special.equals("tower")) {
                 if (event.getClickedBlock() == null)
                     return;
+                    
+                Team playerTeam = BedWars.getInstance().getGameManager().getPlayerTeam(arena, player);
+                org.bukkit.Location towerLoc = event.getClickedBlock().getRelative(event.getBlockFace()).getLocation();
+                if (playerTeam != null) {
+                    for (Team t : arena.getTeams()) {
+                        if (!t.getName().equals(playerTeam.getName())) {
+                            if (isInside(towerLoc, t.getBasePos1(), t.getBasePos2())) {
+                                event.setCancelled(true);
+                                player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                                        player.getUniqueId(), "interact-cant-build"));
+                                return;
+                            }
+                        }
+                    }
+                }
+                
                 event.setCancelled(true);
                 if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) {
                     itemStack.setAmount(itemStack.getAmount() - 1);
                 }
-                me.horiciastko.bedwars.utils.TowerBuilder.build(player, arena,
-                        event.getClickedBlock().getRelative(event.getBlockFace()).getLocation());
+                me.horiciastko.bedwars.utils.TowerBuilder.build(player, arena, towerLoc);
             } else if (itemStack.getType() == Material.SNOWBALL || itemStack.getType().name().contains("SPAWN_EGG")) {
                 if (event.getClickedBlock() == null)
                     return;
+                    
+                Team playerTeam = BedWars.getInstance().getGameManager().getPlayerTeam(arena, player);
+                org.bukkit.Location spawnLoc = event.getClickedBlock().getRelative(event.getBlockFace()).getLocation();
+                if (playerTeam != null) {
+                    for (Team t : arena.getTeams()) {
+                        if (!t.getName().equals(playerTeam.getName())) {
+                            if (isInside(spawnLoc, t.getBasePos1(), t.getBasePos2())) {
+                                event.setCancelled(true);
+                                player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                                        player.getUniqueId(), "interact-cant-build"));
+                                return;
+                            }
+                        }
+                    }
+                }
+                
                 event.setCancelled(true);
                 if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) {
                     itemStack.setAmount(itemStack.getAmount() - 1);
@@ -563,12 +670,12 @@ public class GameListener implements Listener {
                 String key;
                 if (itemStack.getType() == Material.SNOWBALL) {
                     entity = event.getClickedBlock().getWorld().spawn(
-                            event.getClickedBlock().getRelative(event.getBlockFace()).getLocation(),
+                            spawnLoc,
                             org.bukkit.entity.Silverfish.class);
                     key = "entity-bedbug";
                 } else {
                     entity = event.getClickedBlock().getWorld().spawn(
-                            event.getClickedBlock().getRelative(event.getBlockFace()).getLocation(),
+                            spawnLoc,
                             org.bukkit.entity.IronGolem.class);
                     key = "entity-dream-defender";
                 }
@@ -580,13 +687,28 @@ public class GameListener implements Listener {
                     le.setCustomNameVisible(true);
                 }
                 entity.addScoreboardTag("bw_mob");
-                Team playerTeam = BedWars.getInstance().getGameManager().getPlayerTeam(arena, player);
                 if (playerTeam != null) {
                     entity.addScoreboardTag("team_" + playerTeam.getName());
                 }
             } else if (itemStack.getType() == Material.DRAGON_EGG) {
                 if (event.getClickedBlock() == null)
                     return;
+                    
+                Team playerTeam2 = BedWars.getInstance().getGameManager().getPlayerTeam(arena, player);
+                org.bukkit.Location eggLoc = event.getClickedBlock().getRelative(event.getBlockFace()).getLocation();
+                if (playerTeam2 != null) {
+                    for (Team t : arena.getTeams()) {
+                        if (!t.getName().equals(playerTeam2.getName())) {
+                            if (isInside(eggLoc, t.getBasePos1(), t.getBasePos2())) {
+                                event.setCancelled(true);
+                                player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(
+                                        player.getUniqueId(), "interact-cant-build"));
+                                return;
+                            }
+                        }
+                    }
+                }
+                
                 event.setCancelled(true);
                 if (player.getGameMode() != org.bukkit.GameMode.CREATIVE) {
                     itemStack.setAmount(itemStack.getAmount() - 1);
@@ -884,7 +1006,7 @@ public class GameListener implements Listener {
             return;
         }
 
-        if (event.getEntity() instanceof EnderDragon 
+        if (event.getEntity() instanceof EnderDragon
                 && event.getEntity().getScoreboardTags().contains("bw_sudden_death")) {
             java.util.Iterator<Block> it = event.blockList().iterator();
             while (it.hasNext()) {
@@ -923,7 +1045,7 @@ public class GameListener implements Listener {
     public void onDragonBlockChange(EntityChangeBlockEvent event) {
         if (event.getEntity() instanceof EnderDragon || event.getEntityType() == EntityType.ENDER_DRAGON) {
             if (event.getEntity().getScoreboardTags().contains("bw_sudden_death")) {
-                if (event.getBlock().getType().name().endsWith("_BED") 
+                if (event.getBlock().getType().name().endsWith("_BED")
                         || event.getBlock().getType() == org.bukkit.Material.BEDROCK) {
                     event.setCancelled(true);
                 }
@@ -1076,16 +1198,22 @@ public class GameListener implements Listener {
         Team closest = null;
         double distSq = Double.MAX_VALUE;
         for (Team t : arena.getTeams()) {
-            if (t.getSpawnLocation() == null && t.getBedLocation() == null)
-                continue;
-
             double d = Double.MAX_VALUE;
-            if (t.getSpawnLocation() != null)
-                d = Math.min(d, loc.distanceSquared(t.getSpawnLocation()));
-            if (t.getBedLocation() != null)
-                d = Math.min(d, loc.distanceSquared(t.getBedLocation()));
+            try {
+                if (t.getSpawnLocation() != null && t.getSpawnLocation().getWorld() != null)
+                    d = Math.min(d, loc.distanceSquared(t.getSpawnLocation()));
+                if (t.getBedLocation() != null && t.getBedLocation().getWorld() != null)
+                    d = Math.min(d, loc.distanceSquared(t.getBedLocation()));
+                if (t.getShopLocation() != null && t.getShopLocation().getWorld() != null)
+                    d = Math.min(d, loc.distanceSquared(t.getShopLocation()));
+                if (t.getBasePos1() != null && t.getBasePos1().getWorld() != null)
+                    d = Math.min(d, loc.distanceSquared(t.getBasePos1()));
+                if (t.getBasePos2() != null && t.getBasePos2().getWorld() != null)
+                    d = Math.min(d, loc.distanceSquared(t.getBasePos2()));
+            } catch (IllegalArgumentException e) {
+            }
 
-            if (d < distSq) {
+            if (d < distSq && d < 10000) {
                 distSq = d;
                 closest = t;
             }
