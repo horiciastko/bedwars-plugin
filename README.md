@@ -169,3 +169,12 @@ The built JAR will be available in the `target/` folder.
 - Vault
 
 The plugin works without them, but integrations are enabled only when those plugins are installed.
+
+## Bug Reports & Support
+
+Found a bug or have a feature request? Feel free to:
+- Open an issue on the repository
+- Report bugs with detailed information (server version, plugin version, steps to reproduce)
+- Suggest new features or improvements
+
+Your feedback helps make this plugin better!
