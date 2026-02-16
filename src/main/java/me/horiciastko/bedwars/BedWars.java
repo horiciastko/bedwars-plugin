@@ -130,7 +130,6 @@ public class BedWars extends JavaPlugin {
                 this);
         getServer().getPluginManager().registerEvents(new me.horiciastko.bedwars.listeners.NPCListener(this), this);
         
-        // Register Citizens-specific listener only if Citizens is available
         if (supportManager.isCitizensEnabled()) {
             try {
                 getServer().getPluginManager().registerEvents(new me.horiciastko.bedwars.listeners.CitizensNPCListener(this), this);

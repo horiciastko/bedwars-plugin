@@ -80,8 +80,6 @@ public class CitizensNPCImpl implements BedWarsNPC {
             plugin.getNpcManager().registerEntity(npc.getEntity().getUniqueId(), this);
         }
 
-        // Add a trait to identify this as a BedWars NPC of specific type
-        // The NPCListener will handle click events
         net.citizensnpcs.api.trait.Trait identifierTrait = new net.citizensnpcs.api.trait.Trait("bw_" + type) {};
         npc.addTrait(identifierTrait);
     }

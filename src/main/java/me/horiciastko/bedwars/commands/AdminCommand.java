@@ -115,7 +115,6 @@ public class AdminCommand implements SubCommand {
             }
 
             if (args[2].equalsIgnoreCase("remove")) {
-                // Check if ID argument is provided: /bw admin npc remove <ID>
                 if (args.length >= 4) {
                     try {
                         int npcId = Integer.parseInt(args[3]);
@@ -134,7 +133,6 @@ public class AdminCommand implements SubCommand {
                     return;
                 }
                 
-                // Original behavior: remove by looking at NPC
                 me.horiciastko.bedwars.npc.BedWarsNPC nearest = null;
 
                 org.bukkit.entity.Entity target = player.getTargetEntity(5);
