@@ -591,7 +591,7 @@ public class ArenaManager {
                 leaveItem = new org.bukkit.inventory.ItemStack(org.bukkit.Material.BARRIER);
             org.bukkit.inventory.meta.ItemMeta meta = leaveItem.getItemMeta();
             if (meta != null) {
-                meta.setDisplayName("§c§lBack to Lobby §7(Right Click)");
+                meta.setDisplayName(plugin.getLanguageManager().getMessage(player.getUniqueId(), "lobby-leave-item"));
                 leaveItem.setItemMeta(meta);
                 me.horiciastko.bedwars.utils.ItemTagUtils.setTag(leaveItem, "special_item", "lobby_leave");
             }

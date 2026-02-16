@@ -183,7 +183,72 @@ public class NPCManager {
         npc.remove();
     }
 
+    private void cleanupOrphanedHolograms() {
+        int removed = 0;
+        for (org.bukkit.World world : org.bukkit.Bukkit.getWorlds()) {
+            for (org.bukkit.entity.Entity entity : world.getEntities()) {
+                if (entity instanceof org.bukkit.entity.ArmorStand) {
+                    org.bukkit.entity.ArmorStand stand = (org.bukkit.entity.ArmorStand) entity;
+                    try {
+                        if (stand.getScoreboardTags().contains("bw_npc_hologram")) {
+                            stand.remove();
+                            removed++;
+                        }
+                    } catch (NoSuchMethodError ignored) {
+                    }
+                }
+            }
+        }
+        if (removed > 0) {
+            plugin.getLogger().info("Cleaned up " + removed + " orphaned NPC hologram entities.");
+        }
+    }
+
+    private void cleanupOrphanedNPCEntities() {
+        final java.util.concurrent.atomic.AtomicInteger removed = new java.util.concurrent.atomic.AtomicInteger(0);
+        
+        for (org.bukkit.World world : org.bukkit.Bukkit.getWorlds()) {
+            for (org.bukkit.entity.Entity entity : world.getEntities()) {
+                try {
+                    if (entity.getScoreboardTags().contains("bw_npc")) {
+                        entity.remove();
+                        removed.incrementAndGet();
+                    }
+                } catch (NoSuchMethodError ignored) {
+                }
+            }
+        }
+        
+        if (plugin.getSupportManager().isCitizensEnabled()) {
+            try {
+                net.citizensnpcs.api.CitizensAPI.getNPCRegistry().forEach(npc -> {
+                    try {
+                        if (npc.hasTrait(net.citizensnpcs.api.trait.Trait.class)) {
+                            for (net.citizensnpcs.api.trait.Trait trait : npc.getTraits()) {
+                                if (trait.getName().startsWith("bw_")) {
+                                    npc.destroy();
+                                    removed.incrementAndGet();
+                                    return;
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                });
+            } catch (Exception e) {
+                plugin.getLogger().warning("Could not cleanup Citizens NPCs: " + e.getMessage());
+            }
+        }
+        
+        if (removed.get() > 0) {
+            plugin.getLogger().info("Cleaned up " + removed.get() + " orphaned NPC entities.");
+        }
+    }
+
     public void loadStandaloneNPCsFromDatabase() {
+        cleanupOrphanedHolograms();
+        cleanupOrphanedNPCEntities();
+        
         List<DatabaseManager.StandaloneNPCRecord> records = plugin.getDatabaseManager().loadStandaloneNPCs();
         int loaded = 0;
 
@@ -218,6 +283,8 @@ public class NPCManager {
     }
 
     public void refreshAllNPCs() {
+        cleanupOrphanedHolograms();
+        
         List<Arena> arenasToRespawn = new ArrayList<>(activeNPCs.keySet());
 
         Set<BedWarsNPC> arenaNpcs = new HashSet<>();
