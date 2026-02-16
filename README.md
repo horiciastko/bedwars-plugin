@@ -34,13 +34,13 @@ A modern BedWars plugin for Spigot/Paper/Purpur servers with arenas, teams, gene
 ### Death & Respawn
 
 <p align="center">
-  <img src="screenshots/died_github.png" width="60%" alt="Death Screen">
+  <img src="screenshots/died_github.gif" width="60%" alt="Death Screen">
 </p>
 
 ### Arena Setup
 
 <p align="center">
-  <img src="screenshots/setup_github.png" width="30%" alt="Arena Setup GUI">
+  <img src="screenshots/setup_github.gif" width="30%" alt="Arena Setup GUI">
 </p>
 
 ## Key Features
