@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>me.horiciastko</groupId>
     <artifactId>bedwars</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>BETA 1.0</version>
     <name>BedWars</name>
 
     <properties>
