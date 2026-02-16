@@ -1,0 +1,1822 @@
+package me.horiciastko.bedwars.logic;
+
+import me.horiciastko.bedwars.BedWars;
+import me.horiciastko.bedwars.models.Arena;
+import me.horiciastko.bedwars.models.Team;
+import org.bukkit.Material;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.Sound;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.scheduler.BukkitRunnable;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+@SuppressWarnings("deprecation")
+public class GameManager {
+
+    private final BedWars plugin;
+    private final Map<Arena, StartingTask> startTasks = new ConcurrentHashMap<>();
+    private final Map<Arena, Map<UUID, Team>> playerTeams = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> trapImmunity = new ConcurrentHashMap<>();
+    private final Map<UUID, UUID> lastDamager = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> lastDamagerTime = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> playerPickaxeTiers = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> playerAxeTiers = new ConcurrentHashMap<>();
+    private final Map<UUID, String> playerArmorTiers = new ConcurrentHashMap<>();
+    private final java.util.Set<UUID> buildMode = java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Map<Arena, Map<UUID, SessionStats>> sessionStats = new ConcurrentHashMap<>();
+
+    public static class SessionStats {
+        public int kills = 0;
+        public int finalKills = 0;
+        public int bedsBroken = 0;
+    }
+
+    public boolean isInBuildMode(Player player) {
+        return buildMode.contains(player.getUniqueId());
+    }
+
+    public void setBuildMode(Player player, boolean enabled) {
+        if (enabled)
+            buildMode.add(player.getUniqueId());
+        else
+            buildMode.remove(player.getUniqueId());
+    }
+
+    public void setTrapImmunity(UUID uuid, int seconds) {
+        trapImmunity.put(uuid, System.currentTimeMillis() + (seconds * 1000L));
+    }
+
+    public boolean hasTrapImmunity(UUID uuid) {
+        return trapImmunity.getOrDefault(uuid, 0L) > System.currentTimeMillis();
+    }
+
+    public GameManager(BedWars plugin) {
+        this.plugin = plugin;
+    }
+
+    public void forceStart(Arena arena) {
+        if (arena.getState() != Arena.GameState.WAITING && arena.getState() != Arena.GameState.STARTING) {
+            return;
+        }
+
+        StartingTask existingTask = startTasks.remove(arena);
+        if (existingTask != null) {
+            existingTask.cancel();
+        }
+
+        if (arena.getPlayers().size() <= 1) {
+            arena.setSoloTest(true);
+        }
+
+        startCountdown(arena, 5);
+    }
+
+    public void checkLobbyLogistics(Arena arena) {
+        if (arena.getState() != Arena.GameState.WAITING && arena.getState() != Arena.GameState.STARTING) {
+            return;
+        }
+
+        int playerCount = arena.getPlayers().size();
+        int minPlayers = arena.getMinPlayers();
+        int maxPlayers = arena.getMaxPlayers();
+
+        if (playerCount < minPlayers) {
+            if (arena.getState() == Arena.GameState.STARTING) {
+                if (startTasks.containsKey(arena)) {
+                    startTasks.get(arena).cancel();
+                    startTasks.remove(arena);
+                }
+                arena.setState(Arena.GameState.WAITING);
+                arena.getPlayers().forEach(p -> {
+                    p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-starting-cancelled"));
+                });
+            }
+            return;
+        }
+
+        StartingTask task = startTasks.get(arena);
+        if (task == null) {
+            startCountdown(arena, 60);
+            task = startTasks.get(arena);
+        }
+
+        if (playerCount >= maxPlayers) {
+            task.setTimer(10);
+        } else if (playerCount >= maxPlayers / 2) {
+            task.setTimer(30);
+        }
+    }
+
+    public void setLastDamager(Player victim, Player damager) {
+        if (victim.getUniqueId().equals(damager.getUniqueId()))
+            return;
+        lastDamager.put(victim.getUniqueId(), damager.getUniqueId());
+        lastDamagerTime.put(victim.getUniqueId(), System.currentTimeMillis() + 10000);
+    }
+
+    public int getStartTimer(Arena arena) {
+        StartingTask task = startTasks.get(arena);
+        return (task != null) ? task.getTimer() : 0;
+    }
+
+    public Player getLastDamager(Player victim) {
+        if (!lastDamagerTime.containsKey(victim.getUniqueId()))
+            return null;
+        if (lastDamagerTime.get(victim.getUniqueId()) < System.currentTimeMillis())
+            return null;
+        return org.bukkit.Bukkit.getPlayer(lastDamager.get(victim.getUniqueId()));
+    }
+
+    private void startCountdown(Arena arena, int seconds) {
+        if (arena.getState() == Arena.GameState.IN_GAME || arena.getState() == Arena.GameState.ENDING) {
+            return;
+        }
+
+        StartingTask existingTask = startTasks.get(arena);
+        if (existingTask != null) {
+            existingTask.setTimer(seconds);
+            if (arena.getState() != Arena.GameState.STARTING) {
+                arena.setState(Arena.GameState.STARTING);
+            }
+            return;
+        }
+
+        arena.setState(Arena.GameState.STARTING);
+        StartingTask task = new StartingTask(arena, seconds);
+        startTasks.put(arena, task);
+        task.runTaskTimer(plugin, 0L, 20L);
+    }
+
+    private class StartingTask extends BukkitRunnable {
+        private final Arena arena;
+        private int timer;
+
+        public StartingTask(Arena arena, int timer) {
+            this.arena = arena;
+            this.timer = timer;
+        }
+
+        public int getTimer() {
+            return timer;
+        }
+
+        public void setTimer(int seconds) {
+            if (seconds < this.timer) {
+                this.timer = seconds;
+            }
+        }
+
+        @Override
+        public void run() {
+            if (arena.getState() != Arena.GameState.STARTING && arena.getState() != Arena.GameState.WAITING) {
+                startTasks.remove(arena, this);
+                this.cancel();
+                return;
+            }
+
+            if (arena.getPlayers().isEmpty()) {
+                arena.setState(Arena.GameState.WAITING);
+                startTasks.remove(arena, this);
+                this.cancel();
+                return;
+            }
+
+            if (timer <= 0) {
+                startGame(arena);
+                startTasks.remove(arena, this);
+                this.cancel();
+                return;
+            }
+
+            if (timer <= 5 || timer == 10 || timer == 30 || timer == 60) {
+                arena.getPlayers().forEach(p -> {
+                    String msg = plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-starting");
+                    p.sendMessage(msg.replace("%seconds%", String.valueOf(timer)));
+
+                    String soundPath = "game-countdown-s" + Math.min(timer, 5);
+                    if (timer > 5)
+                        soundPath = "game-countdown-others";
+                    plugin.getSoundManager().playSound(p, soundPath);
+
+                    if (timer <= 5) {
+                        String color;
+                        switch (timer) {
+                            case 5:
+                            case 4:
+                                color = "§a";
+                                break;
+                            case 3:
+                            case 2:
+                                color = "§e";
+                                break;
+                            default:
+                                color = "§c";
+                                break;
+                        }
+
+                        StringBuilder circles = new StringBuilder();
+                        for (int i = 0; i < 5; i++) {
+                            if (i < timer)
+                                circles.append(color).append("● ");
+                            else
+                                circles.append("§8○ ");
+                        }
+
+                        plugin.sendTitle(p, color + "§l" + timer, circles.toString().trim(), 0, 20, 0);
+                    }
+                });
+            }
+
+            timer--;
+        }
+    }
+
+    private boolean isInside(org.bukkit.Location loc, org.bukkit.Location p1, org.bukkit.Location p2) {
+        if (p1 == null || p2 == null || loc == null)
+            return false;
+        if (!loc.getWorld().getName().equals(p1.getWorld().getName()))
+            return false;
+        double minX = Math.min(p1.getX(), p2.getX());
+        double maxX = Math.max(p1.getX(), p2.getX());
+        double minY = Math.min(p1.getY(), p2.getY());
+        double maxY = Math.max(p1.getY(), p2.getY());
+        double minZ = Math.min(p1.getZ(), p2.getZ());
+        double maxZ = Math.max(p1.getZ(), p2.getZ());
+
+        return loc.getX() >= minX && loc.getX() <= maxX &&
+                loc.getY() >= minY && loc.getY() <= maxY &&
+                loc.getZ() >= minZ && loc.getZ() <= maxZ;
+    }
+
+    public synchronized void startGame(Arena arena) {
+        if (arena.getState() == Arena.GameState.IN_GAME || arena.getState() == Arena.GameState.ENDING) {
+            return;
+        }
+
+        StartingTask existingTask = startTasks.remove(arena);
+        if (existingTask != null) {
+            existingTask.cancel();
+        }
+
+        sessionStats.put(arena, new ConcurrentHashMap<>());
+        arena.setState(Arena.GameState.IN_GAME);
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (arena.getState() != Arena.GameState.IN_GAME) {
+                    this.cancel();
+                    return;
+                }
+
+                for (Team t : arena.getTeams()) {
+                    if (t.isEliminated())
+                        continue;
+                    if (t.getUpgradeLevel("heal_pool") > 0) {
+                        for (Player p : t.getMembers()) {
+                            if (p.isOnline() && p.getLocation().getWorld().equals(t.getBasePos1().getWorld())
+                                    && isInside(p.getLocation(), t.getBasePos1(), t.getBasePos2())) {
+                                p.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                                        org.bukkit.potion.PotionEffectType.REGENERATION, 100, 0));
+                            }
+                        }
+                    }
+                }
+            }
+        }.runTaskTimer(plugin, 0L, 20L);
+
+        assignTeams(arena);
+
+        for (Team team : arena.getTeams()) {
+            if (team.getMembers().isEmpty()) {
+                team.setBedBroken(true);
+                if (team.getBedLocation() != null) {
+                    team.getBedLocation().getBlock().setType(org.bukkit.Material.AIR);
+                }
+            }
+        }
+
+        arena.getPlayers().forEach(p -> {
+            p.getInventory().clear();
+            p.getEnderChest().clear();
+            p.setGameMode(org.bukkit.GameMode.SURVIVAL);
+            p.setFoodLevel(20);
+            p.setHealth(20);
+
+            Team team = getPlayerTeam(arena, p);
+            if (team != null) {
+                playerArmorTiers.putIfAbsent(p.getUniqueId(), "LEATHER");
+                giveStartingKit(p, team);
+                applyPvpSettings(p, arena);
+
+                if (team.getSpawnLocation() != null) {
+                    p.teleport(team.getSpawnLocation());
+                } else {
+                    p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "error-spawn-not-set")
+                            .replace("%team%", team.getName()));
+                    plugin.getLogger().warning(
+                            "Spawn location missing for team " + team.getName() + " in arena " + arena.getName());
+                    if (arena.getLobbyLocation() != null)
+                        p.teleport(arena.getLobbyLocation());
+                }
+            } else {
+                p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "error-not-assigned-team"));
+            }
+
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+            plugin.getSoundManager().playSound(p, "game-countdown-start");
+        });
+
+        arena.getPlayers().forEach(p -> {
+            plugin.getLanguageManager().getMessageList(p.getUniqueId(), "game-started")
+                    .forEach(p::sendMessage);
+        });
+
+        if (arena.getWorldName() != null) {
+            org.bukkit.World world = org.bukkit.Bukkit.getWorld(arena.getWorldName());
+            if (world != null) {
+                prepareWorldRules(world);
+                world.setGameRuleValue("mobGriefing", "true");
+                world.setTime(6000L);
+                world.setStorm(false);
+                world.setThundering(false);
+                world.getWorldBorder().reset();
+            }
+        }
+
+        spawnGameVisuals(arena);
+        plugin.getVisualizationManager().spawnGeneratorVisuals(arena);
+
+        if (plugin.getConfig().getBoolean("game.remove-waiting-lobby", true)) {
+            removeLobbyStructure(arena);
+        }
+
+        arena.setGameTime(0);
+        arena.setEventIndex(0);
+        org.bukkit.configuration.file.FileConfiguration gConfig = plugin.getConfigManager().getGeneratorConfig();
+        java.util.List<Map<?, ?>> events = gConfig.getMapList("events");
+        if (!events.isEmpty()) {
+            arena.setEventTimer((int) events.get(0).get("duration"));
+        }
+
+        plugin.getSignManager().updateSigns(arena);
+    }
+
+    private void removeLobbyStructure(Arena arena) {
+        if (arena.getLobbyLocation() == null)
+            return;
+
+        if (arena.getLobbyPos1() != null && arena.getLobbyPos2() != null) {
+            Location l1 = arena.getLobbyPos1();
+            Location l2 = arena.getLobbyPos2();
+
+            if (!l1.getWorld().getName().equals(l2.getWorld().getName()))
+                return;
+
+            int minX = Math.min(l1.getBlockX(), l2.getBlockX());
+            int maxX = Math.max(l1.getBlockX(), l2.getBlockX());
+            int minY = Math.min(l1.getBlockY(), l2.getBlockY());
+            int maxY = Math.max(l1.getBlockY(), l2.getBlockY());
+            int minZ = Math.min(l1.getBlockZ(), l2.getBlockZ());
+            int maxZ = Math.max(l1.getBlockZ(), l2.getBlockZ());
+
+            for (int x = minX; x <= maxX; x++) {
+                for (int y = minY; y <= maxY; y++) {
+                    for (int z = minZ; z <= maxZ; z++) {
+                        org.bukkit.block.Block block = l1.getWorld().getBlockAt(x, y, z);
+                        if (block.getType() != org.bukkit.Material.AIR) {
+                            block.setType(org.bukkit.Material.AIR);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        int radius = plugin.getConfig().getInt("game.waiting-lobby-radius", 10);
+        Location center = arena.getLobbyLocation();
+
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -radius; y <= radius; y++) {
+                for (int z = -radius; z <= radius; z++) {
+                    Location loc = center.clone().add(x, y, z);
+                    if (loc.getBlock().getType() != org.bukkit.Material.AIR) {
+                        loc.getBlock().setType(org.bukkit.Material.AIR);
+                    }
+                }
+            }
+        }
+    }
+
+    private void assignTeams(Arena arena) {
+        List<Player> shuffledPlayers = new ArrayList<>(arena.getPlayers());
+        java.util.Collections.shuffle(shuffledPlayers);
+
+        Map<UUID, Team> teamsMap = new ConcurrentHashMap<>();
+        int playersPerTeam = arena.getMode().getPlayersPerTeam();
+
+        int playerIndex = 0;
+        for (Team team : arena.getTeams()) {
+            team.getMembers().clear();
+            for (int i = 0; i < playersPerTeam && playerIndex < shuffledPlayers.size(); i++) {
+                Player p = shuffledPlayers.get(playerIndex++);
+                team.getMembers().add(p);
+                teamsMap.put(p.getUniqueId(), team);
+            }
+        }
+        playerTeams.put(arena, teamsMap);
+    }
+
+    public Team getPlayerTeam(Arena arena, Player player) {
+        Map<UUID, Team> map = playerTeams.get(arena);
+        return map != null ? map.get(player.getUniqueId()) : null;
+    }
+
+    private void spawnGameVisuals(Arena arena) {
+        plugin.getVisualizationManager().spawnGameHolograms(arena);
+
+        plugin.getNpcManager().spawnNPCs(arena);
+    }
+
+
+    public void cleanupArena(Arena arena) {
+        playerTeams.remove(arena);
+        if (arena.getPlayers() != null) {
+            for (Player p : arena.getPlayers()) {
+                playerPickaxeTiers.remove(p.getUniqueId());
+                playerAxeTiers.remove(p.getUniqueId());
+                playerArmorTiers.remove(p.getUniqueId());
+            }
+        }
+        plugin.getVisualizationManager().removeGameHolograms(arena);
+
+        plugin.getNpcManager().removeNPCs(arena);
+
+        if (arena.getWorldName() != null) {
+            org.bukkit.World w = org.bukkit.Bukkit.getWorld(arena.getWorldName());
+            if (w != null) {
+                w.getEntitiesByClass(org.bukkit.entity.Item.class).forEach(org.bukkit.entity.Entity::remove);
+            }
+        }
+    }
+
+    public void handleDeath(Player player, Arena arena, String reason) {
+        if (player.getGameMode() == GameMode.SPECTATOR)
+            return;
+
+        Team team = getPlayerTeam(arena, player);
+        if (team == null) {
+            player.setHealth(20);
+            player.setFoodLevel(20);
+            player.setGameMode(GameMode.SURVIVAL);
+            player.getInventory().clear();
+
+            if (arena.getLobbyLocation() != null) {
+                player.teleport(arena.getLobbyLocation());
+            } else {
+                player.teleport(player.getWorld().getSpawnLocation());
+            }
+            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "error-died-void-lobby"));
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_DEATH, 1f, 1f);
+            return;
+        }
+
+        Player victim = player;
+        Player killer = null;
+
+        if (reason.contains("was killed by ") || reason.contains("was shot by ") || reason.contains("was blown up by ")
+                || reason.contains("was fireballed by ")) {
+            String temp = reason.replace("was killed by ", "").replace("was shot by ", "")
+                    .replace("was blown up by ", "").replace("was fireballed by ", "");
+            if (temp.endsWith("."))
+                temp = temp.substring(0, temp.length() - 1);
+            killer = org.bukkit.Bukkit.getPlayer(temp);
+        }
+
+        if (killer == null) {
+            killer = getLastDamager(victim);
+            if (killer != null) {
+                reason = "was knocked into the void by " + killer.getName() + ".";
+            }
+        }
+
+        if (killer != null && killer.getUniqueId().equals(victim.getUniqueId())) {
+            killer = null;
+            if (reason.contains("void")) {
+                reason = "fell into the void.";
+            }
+        }
+
+        lastDamager.remove(victim.getUniqueId());
+        lastDamagerTime.remove(victim.getUniqueId());
+
+        plugin.getStatsManager().addDeath(victim.getUniqueId());
+        if (killer != null) {
+            plugin.getStatsManager().addKill(killer.getUniqueId());
+            getOrCreateSessionStats(arena, killer.getUniqueId()).kills++;
+        }
+
+        boolean isFinal = team.isBedBroken();
+
+        if (killer != null && killer.isOnline()) {
+            List<org.bukkit.Material> resources = java.util.Arrays.asList(org.bukkit.Material.IRON_INGOT,
+                    org.bukkit.Material.GOLD_INGOT, org.bukkit.Material.EMERALD,
+                    org.bukkit.Material.DIAMOND);
+            for (ItemStack itemStack : victim.getInventory().getContents()) {
+                if (itemStack != null && resources.contains(itemStack.getType())) {
+                    killer.getInventory().addItem(itemStack.clone());
+                    String resName = plugin.getLanguageManager().getItemName(killer.getUniqueId(), itemStack.getType());
+                    killer.sendMessage(
+                            plugin.getLanguageManager().getMessage(killer.getUniqueId(), "player-looted-resources")
+                                    .replace("%amount%", String.valueOf(itemStack.getAmount()))
+                                    .replace("%resource%", resName)
+                                    .replace("%player%", victim.getName()));
+                }
+            }
+        }
+
+        player.getInventory().clear();
+        player.setHealth(20);
+        player.setFoodLevel(20);
+
+        String msg;
+        if (killer == null) {
+            String key;
+            if (reason.contains("fell into the void")) {
+                key = isFinal ? "player-die-void-final" : "player-die-void-regular";
+            } else {
+                key = isFinal ? "player-die-unknown-final" : "player-die-unknown-regular";
+            }
+            msg = plugin.getLanguageManager().getMessage(player.getUniqueId(), key);
+        } else {
+            String key;
+            if (reason.contains("shot by")) {
+                key = isFinal ? "player-die-bow-final" : "player-die-bow-regular";
+            } else if (reason.contains("blown up by")) {
+                key = isFinal ? "player-die-tnt-final" : "player-die-tnt-regular";
+            } else if (reason.contains("fireballed by")) {
+                key = isFinal ? "player-die-fireball-final" : "player-die-fireball-regular";
+            } else if (reason.contains("knocked into the void")) {
+                key = isFinal ? "player-die-void-attack-final" : "player-die-void-attack-regular";
+            } else {
+                key = isFinal ? "player-die-attack-final" : "player-die-attack-regular";
+            }
+            msg = plugin.getLanguageManager().getMessage(player.getUniqueId(), key);
+        }
+
+        String playerColor = (team.getColor() != null) ? team.getColor().toString() : "§f";
+        String playerPureName = player.getName();
+        String killerColor = "";
+        String killerPureName = "";
+        if (killer != null) {
+            Team killerTeam = getPlayerTeam(arena, killer);
+            killerColor = (killerTeam != null && killerTeam.getColor() != null) ? killerTeam.getColor().toString()
+                    : "§f";
+            killerPureName = killer.getName();
+        }
+
+        String finalMsg = msg
+                .replace("{PlayerColor}", playerColor)
+                .replace("{PlayerName}", playerPureName)
+                .replace("{KillerColor}", killerColor)
+                .replace("{KillerName}", killerPureName);
+
+        arena.getPlayers().forEach(p -> {
+            p.sendMessage(finalMsg);
+            plugin.getSoundManager().playSound(p, isFinal ? "bed-destroy" : "kill");
+            plugin.getScoreboardManager().updateScoreboard(p);
+        });
+
+        if (isFinal) {
+            long aliveMembers = team.getMembers().stream()
+                    .filter(m -> m.getGameMode() != GameMode.SPECTATOR)
+                    .filter(m -> !m.getUniqueId().equals(player.getUniqueId()))
+                    .count();
+
+            if (aliveMembers == 0) {
+                team.setEliminated(true);
+                String teamColor = (team.getColor() != null) ? team.getColor().toString() : "§f";
+
+                String elimChat = plugin.getLanguageManager().getMessage(null, "team-eliminated-chat");
+                String elimTitle = plugin.getLanguageManager().getMessage(null, "team-eliminated-title");
+                String elimSubtitle = plugin.getLanguageManager().getMessage(null, "team-eliminated-subtitle");
+
+                String formattedChat = elimChat.replace("{TeamColor}", teamColor).replace("{TeamName}",
+                        team.getDisplayName());
+                String formattedTitle = elimTitle;
+                String formattedSubtitle = elimSubtitle.replace("{TeamColor}", teamColor).replace("{TeamName}",
+                        team.getDisplayName());
+
+                arena.getPlayers().forEach(p -> {
+                    p.sendMessage(formattedChat);
+                    plugin.sendTitle(p, formattedTitle, formattedSubtitle, 10, 40, 10);
+                    plugin.getSoundManager().playSound(p, "team-eliminated");
+                });
+
+                plugin.getVisualizationManager().spawnGameHolograms(arena);
+            }
+            if (killer != null) {
+                plugin.getStatsManager().addFinalKill(killer.getUniqueId());
+                getOrCreateSessionStats(arena, killer.getUniqueId()).finalKills++;
+            }
+            plugin.getStatsManager().addDeath(player.getUniqueId());
+
+            player.setGameMode(GameMode.SPECTATOR);
+            if (arena.getLobbyLocation() != null) {
+                player.teleport(arena.getLobbyLocation());
+            } else if (team.getSpawnLocation() != null) {
+                player.teleport(team.getSpawnLocation());
+            }
+
+            checkForWin(arena);
+        } else {
+            int pickTier = playerPickaxeTiers.getOrDefault(player.getUniqueId(), 0);
+            if (pickTier > 0) {
+                playerPickaxeTiers.put(player.getUniqueId(), Math.max(1, pickTier - 1));
+            }
+            int axeTier = playerAxeTiers.getOrDefault(player.getUniqueId(), 0);
+            if (axeTier > 0) {
+                playerAxeTiers.put(player.getUniqueId(), Math.max(1, axeTier - 1));
+            }
+
+            player.setGameMode(GameMode.SPECTATOR);
+
+            if (arena.getLobbyLocation() != null) {
+                player.teleport(arena.getLobbyLocation());
+            } else if (team.getSpawnLocation() != null) {
+                player.teleport(team.getSpawnLocation());
+            }
+
+            String title = plugin.getLanguageManager().getMessage(player.getUniqueId(), "player-died-title");
+            String subtitle = plugin.getLanguageManager().getMessage(player.getUniqueId(), "player-died-subtitle")
+                    .replace("%time%", "5");
+            plugin.sendTitle(player, title, subtitle, 0, 25, 0);
+
+            new BukkitRunnable() {
+                int timeLeft = 5;
+
+                @Override
+                public void run() {
+                    if (!player.isOnline() || arena.getState() != Arena.GameState.IN_GAME) {
+                        this.cancel();
+                        return;
+                    }
+
+                    if (timeLeft <= 0) {
+                        player.setGameMode(GameMode.SURVIVAL);
+                        if (team.getSpawnLocation() != null) {
+                            player.teleport(team.getSpawnLocation());
+                        } else {
+                            player.teleport(arena.getLobbyLocation());
+                        }
+                        String respawnTitle = plugin.getLanguageManager().getMessage(player.getUniqueId(),
+                                "player-re-spawn-title");
+                        plugin.sendTitle(player, respawnTitle, "", 5, 20, 5);
+                        player.sendMessage(
+                                plugin.getLanguageManager().getMessage(player.getUniqueId(), "player-respawned"));
+                        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+
+                        giveStartingKit(player, team);
+                        applyPvpSettings(player, arena);
+
+                        this.cancel();
+                        return;
+                    }
+
+                    if (timeLeft < 5) {
+                        String rTitle = plugin.getLanguageManager().getMessage(player.getUniqueId(),
+                                "player-died-title");
+                        String rSubtitle = plugin.getLanguageManager().getMessage(player.getUniqueId(),
+                                "player-died-subtitle")
+                                .replace("%time%", String.valueOf(timeLeft));
+                        player.sendTitle(rTitle, rSubtitle, 0, 25, 0);
+                    }
+
+                    timeLeft--;
+                }
+            }.runTaskTimer(plugin, 0L, 20L);
+        }
+    }
+
+    public boolean isBedWarsItem(org.bukkit.inventory.ItemStack item) {
+        if (item == null || item.getType() == org.bukkit.Material.AIR)
+            return false;
+        return true;
+    }
+
+    public void triggerGameEvent(Arena arena, String eventId) {
+        org.bukkit.configuration.file.FileConfiguration gConfig = plugin.getConfigManager().getGeneratorConfig();
+        String broadcastFmt = gConfig.getString("messages.upgrade_broadcast",
+                "§b§l%type% GENERATORS §eUPGRADED TO §6§lTIER %tier%");
+
+        switch (eventId) {
+            case "diamond_2":
+                arena.setDiamondTier(2);
+                broadcastUpgrade(arena, gConfig.getString("global_generators.diamond.name", "Diamond"), "II",
+                        broadcastFmt);
+                break;
+            case "emerald_2":
+                arena.setEmeraldTier(2);
+                broadcastUpgrade(arena, gConfig.getString("global_generators.emerald.name", "Emerald"), "II",
+                        broadcastFmt);
+                break;
+            case "diamond_3":
+                arena.setDiamondTier(3);
+                broadcastUpgrade(arena, gConfig.getString("global_generators.diamond.name", "Diamond"), "III",
+                        broadcastFmt);
+                break;
+            case "emerald_3":
+                arena.setEmeraldTier(3);
+                broadcastUpgrade(arena, gConfig.getString("global_generators.emerald.name", "Emerald"), "III",
+                        broadcastFmt);
+                break;
+            case "bed_gone":
+                destroyAllBeds(arena);
+                break;
+            case "sudden_death":
+                startSuddenDeath(arena);
+                break;
+            case "game_end":
+                endGame(arena, null);
+                break;
+        }
+    }
+
+    private void broadcastUpgrade(Arena arena, String type, String tier, String fmt) {
+        String msg = fmt.replace("%type%", type).replace("%tier%", tier);
+        arena.getPlayers().forEach(p -> {
+            p.sendMessage(msg);
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+        });
+    }
+
+    private void destroyAllBeds(Arena arena) {
+        arena.getPlayers().forEach(p -> {
+            p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "event-bed-destruction-chat"));
+            p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f);
+        });
+
+        for (Team team : arena.getTeams()) {
+            if (!team.isBedBroken()) {
+                team.setBedBroken(true);
+                if (team.getBedLocation() != null) {
+                    team.getBedLocation().getBlock().setType(org.bukkit.Material.AIR);
+                }
+            }
+        }
+
+        plugin.getVisualizationManager().spawnGameHolograms(arena);
+        arena.getPlayers().forEach(p -> plugin.getScoreboardManager().updateScoreboard(p));
+    }
+
+    private void startSuddenDeath(Arena arena) {
+        arena.getPlayers().forEach(p -> {
+            p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "event-sudden-death-chat"));
+            p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 1f, 1f);
+
+            String title = plugin.getLanguageManager().getMessage(p.getUniqueId(), "event-sudden-death-title");
+            String subtitle = plugin.getLanguageManager().getMessage(p.getUniqueId(), "event-sudden-death-subtitle");
+            p.sendTitle(title, subtitle, 10, 60, 20);
+        });
+
+        if (arena.getWorldName() != null && arena.getPos1() != null && arena.getPos2() != null) {
+            org.bukkit.World world = org.bukkit.Bukkit.getWorld(arena.getWorldName());
+            if (world != null) {
+                double minX = Math.min(arena.getPos1().getX(), arena.getPos2().getX());
+                double maxX = Math.max(arena.getPos1().getX(), arena.getPos2().getX());
+                double minZ = Math.min(arena.getPos1().getZ(), arena.getPos2().getZ());
+                double maxZ = Math.max(arena.getPos1().getZ(), arena.getPos2().getZ());
+
+                Location center = new Location(world, (minX + maxX) / 2.0, 100, (minZ + maxZ) / 2.0);
+                double initialSize = Math.max(maxX - minX, maxZ - minZ) + 20;
+
+                org.bukkit.WorldBorder border = world.getWorldBorder();
+                border.setCenter(center);
+                border.setSize(initialSize);
+                border.setSize(2.0, 300);
+            }
+        }
+
+        spawnSuddenDeathDragons(arena);
+    }
+
+    private void spawnSuddenDeathDragons(Arena arena) {
+        if (arena.getWorldName() == null)
+            return;
+        org.bukkit.World world = org.bukkit.Bukkit.getWorld(arena.getWorldName());
+        if (world == null)
+            return;
+
+        List<Team> aliveTeams = arena.getTeams().stream()
+                .filter(t -> t.getMembers().stream().anyMatch(p -> p.getGameMode() != GameMode.SPECTATOR))
+                .collect(java.util.stream.Collectors.toList());
+
+        int dragonCount = 0;
+        for (Team t : aliveTeams) {
+            dragonCount++;
+            if (t.getUpgradeLevel("dragon") > 0) {
+                dragonCount++;
+            }
+        }
+
+        dragonCount = Math.min(dragonCount, 10);
+        if (dragonCount < 1)
+            dragonCount = 1;
+
+        for (int i = 0; i < dragonCount; i++) {
+            Location spawnLoc = arena.getLobbyLocation() != null ? arena.getLobbyLocation().clone().add(0, 50, 0)
+                    : world.getSpawnLocation().clone().add(0, 50, 0);
+
+            org.bukkit.entity.EnderDragon dragon = world.spawn(spawnLoc, org.bukkit.entity.EnderDragon.class, d -> {
+                String dragonName = plugin.getLanguageManager().getMessage(null, "entity-sudden-death-dragon");
+                d.setCustomName(dragonName);
+                d.setCustomNameVisible(true);
+                d.setHealth(100.0);
+                d.addScoreboardTag("bw_dragon");
+                d.setPhase(org.bukkit.entity.EnderDragon.Phase.CIRCLING);
+            });
+
+            startDragonLogic(dragon, arena);
+        }
+    }
+
+    private void startDragonLogic(org.bukkit.entity.EnderDragon dragon, Arena arena) {
+        new BukkitRunnable() {
+            Player target = null;
+            int ticks = 0;
+
+            @Override
+            public void run() {
+                if (dragon.isDead() || !dragon.isValid() || arena.getState() != Arena.GameState.IN_GAME) {
+                    this.cancel();
+                    return;
+                }
+
+                if (ticks % 100 == 0 || target == null || !target.isOnline()
+                        || target.getGameMode() != GameMode.SURVIVAL
+                        || target.getWorld() != dragon.getWorld()) {
+                    target = findNearestTarget(dragon, arena);
+                }
+
+                if (target != null) {
+                    Location dragonLoc = dragon.getLocation();
+                    Location targetLoc = target.getLocation();
+
+                    if (arena.getPos1() != null && arena.getPos2() != null) {
+                        double minX = Math.min(arena.getPos1().getX(), arena.getPos2().getX()) - 50;
+                        double maxX = Math.max(arena.getPos1().getX(), arena.getPos2().getX()) + 50;
+                        double minZ = Math.min(arena.getPos1().getZ(), arena.getPos2().getZ()) - 50;
+                        double maxZ = Math.max(arena.getPos1().getZ(), arena.getPos2().getZ()) + 50;
+
+                        if (dragonLoc.getX() < minX || dragonLoc.getX() > maxX ||
+                                dragonLoc.getZ() < minZ || dragonLoc.getZ() > maxZ) {
+                            org.bukkit.util.Vector toCenter = new Location(dragon.getWorld(),
+                                    (minX + maxX) / 2, dragonLoc.getY(), (minZ + maxZ) / 2)
+                                    .toVector().subtract(dragonLoc.toVector()).normalize().multiply(1.5);
+                            dragon.setVelocity(dragon.getVelocity().add(toCenter));
+                        }
+                    }
+
+                    if (ticks % 200 == 0) {
+                        dragon.setPhase(org.bukkit.entity.EnderDragon.Phase.CHARGE_PLAYER);
+                    } else if (ticks % 300 == 0) {
+                        dragon.setPhase(org.bukkit.entity.EnderDragon.Phase.SEARCH_FOR_BREATH_ATTACK_TARGET);
+                    } else if (ticks % 100 == 0) {
+                        dragon.setPhase(org.bukkit.entity.EnderDragon.Phase.FLY_TO_PORTAL);                           
+                    }
+
+                    if (dragonLoc.distance(targetLoc) > 100) {
+                        org.bukkit.util.Vector toTarget = targetLoc.toVector().subtract(dragonLoc.toVector())
+                                .normalize().multiply(1.2);
+                        dragon.setVelocity(dragon.getVelocity().add(toTarget));
+                    }
+                }
+
+                ticks++;
+            }
+        }.runTaskTimer(plugin, 20L, 10L);
+    }
+
+    private Player findNearestTarget(org.bukkit.entity.EnderDragon dragon, Arena arena) {
+        Player nearest = null;
+        double minDst = Double.MAX_VALUE;
+
+        for (Player p : arena.getPlayers()) {
+            if (p.getGameMode() == GameMode.SURVIVAL && p.getWorld().equals(dragon.getWorld())) {
+                double dst = p.getLocation().distanceSquared(dragon.getLocation());
+                if (dst < minDst) {
+                    minDst = dst;
+                    nearest = p;
+                }
+            }
+        }
+        return nearest;
+    }
+
+    public void spawnTeamDragon(Player player, Arena arena, Location spawnLocation) {
+        if (arena.getWorldName() == null)
+            return;
+        org.bukkit.World world = org.bukkit.Bukkit.getWorld(arena.getWorldName());
+        if (world == null)
+            return;
+
+        Team playerTeam = getPlayerTeam(arena, player);
+        if (playerTeam == null)
+            return;
+
+        Location dragonSpawn = spawnLocation.clone().add(0, 3, 0);
+
+        org.bukkit.entity.EnderDragon dragon = world.spawn(dragonSpawn, org.bukkit.entity.EnderDragon.class, d -> {
+            String dragonName = plugin.getLanguageManager().getMessage(player.getUniqueId(), "entity-team-dragon")
+                    .replace("{TeamColor}", playerTeam.getColor() != null ? playerTeam.getColor().toString() : "")
+                    .replace("{TeamName}", playerTeam.getName());
+            d.setCustomName(dragonName);
+            d.setCustomNameVisible(true);
+            d.setHealth(200.0);
+            d.addScoreboardTag("bw_dragon");
+            d.addScoreboardTag("team_" + playerTeam.getName());
+            d.setPhase(org.bukkit.entity.EnderDragon.Phase.CIRCLING);
+        });
+
+        startTeamDragonLogic(dragon, arena, playerTeam);
+
+        for (Player p : arena.getPlayers()) {
+            p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f);
+        }
+    }
+
+    private void startTeamDragonLogic(org.bukkit.entity.EnderDragon dragon, Arena arena, Team ownerTeam) {
+        new BukkitRunnable() {
+            Location targetLocation = null;
+            int ticks = 0;
+            int lifetime = 30 * 20;
+
+            @Override
+            public void run() {
+                if (dragon.isDead() || !dragon.isValid() || arena.getState() != Arena.GameState.IN_GAME || ticks >= lifetime) {
+                    if (dragon.isValid() && !dragon.isDead()) {
+                        dragon.remove();
+                    }
+                    this.cancel();
+                    return;
+                }
+
+                if (ticks % 100 == 0 || targetLocation == null) {
+                    targetLocation = findEnemyBedLocation(arena, ownerTeam);
+                    if (targetLocation == null) {
+                        targetLocation = findNearestEnemyPlayer(dragon, arena, ownerTeam);
+                    }
+                }
+
+                if (targetLocation != null) {
+                    Location dragonLoc = dragon.getLocation();
+
+                    if (arena.getPos1() != null && arena.getPos2() != null) {
+                        double minX = Math.min(arena.getPos1().getX(), arena.getPos2().getX()) - 50;
+                        double maxX = Math.max(arena.getPos1().getX(), arena.getPos2().getX()) + 50;
+                        double minZ = Math.min(arena.getPos1().getZ(), arena.getPos2().getZ()) - 50;
+                        double maxZ = Math.max(arena.getPos1().getZ(), arena.getPos2().getZ()) + 50;
+
+                        if (dragonLoc.getX() < minX || dragonLoc.getX() > maxX ||
+                                dragonLoc.getZ() < minZ || dragonLoc.getZ() > maxZ) {
+                            org.bukkit.util.Vector toCenter = new Location(dragon.getWorld(),
+                                    (minX + maxX) / 2, dragonLoc.getY(), (minZ + maxZ) / 2)
+                                    .toVector().subtract(dragonLoc.toVector()).normalize().multiply(1.5);
+                            dragon.setVelocity(dragon.getVelocity().add(toCenter));
+                        }
+                    }
+
+                    if (ticks % 200 == 0) {
+                        dragon.setPhase(org.bukkit.entity.EnderDragon.Phase.CHARGE_PLAYER);
+                    } else if (ticks % 300 == 0) {
+                        dragon.setPhase(org.bukkit.entity.EnderDragon.Phase.SEARCH_FOR_BREATH_ATTACK_TARGET);
+                    } else if (ticks % 100 == 0) {
+                        dragon.setPhase(org.bukkit.entity.EnderDragon.Phase.FLY_TO_PORTAL);
+                    }
+
+                    double distance = dragonLoc.distance(targetLocation);
+                    if (distance > 5) {
+                        org.bukkit.util.Vector toTarget = targetLocation.toVector().subtract(dragonLoc.toVector())
+                                .normalize().multiply(1.2);
+                        dragon.setVelocity(dragon.getVelocity().add(toTarget));
+                    }
+
+                    attackNearbyEnemies(dragon, arena, ownerTeam);
+
+                    destroyNearbyEnemyBeds(dragon, arena, ownerTeam);
+                }
+
+                ticks++;
+            }
+        }.runTaskTimer(plugin, 20L, 10L);
+    }
+
+    private Location findEnemyBedLocation(Arena arena, Team ownerTeam) {
+        for (Team team : arena.getTeams()) {
+            if (!team.getName().equals(ownerTeam.getName()) && !team.isBedBroken()) {
+                Location bedLoc = team.getBedLocation();
+                if (bedLoc != null) {
+                    return bedLoc.clone().add(0, 5, 0);
+                }
+            }
+        }
+        return null;
+    }
+
+    private Location findNearestEnemyPlayer(org.bukkit.entity.EnderDragon dragon, Arena arena, Team ownerTeam) {
+        Player nearest = null;
+        double minDst = Double.MAX_VALUE;
+
+        for (Player p : arena.getPlayers()) {
+            Team playerTeam = getPlayerTeam(arena, p);
+            if (playerTeam != null && !playerTeam.getName().equals(ownerTeam.getName()) &&
+                    p.getGameMode() == GameMode.SURVIVAL && p.getWorld().equals(dragon.getWorld())) {
+                double dst = p.getLocation().distanceSquared(dragon.getLocation());
+                if (dst < minDst) {
+                    minDst = dst;
+                    nearest = p;
+                }
+            }
+        }
+        return nearest != null ? nearest.getLocation() : null;
+    }
+
+    private void attackNearbyEnemies(org.bukkit.entity.EnderDragon dragon, Arena arena, Team ownerTeam) {
+        for (Player p : arena.getPlayers()) {
+            Team playerTeam = getPlayerTeam(arena, p);
+            if (playerTeam != null && !playerTeam.getName().equals(ownerTeam.getName()) &&
+                    p.getGameMode() == GameMode.SURVIVAL) {
+                double distance = p.getLocation().distance(dragon.getLocation());
+                if (distance < 5.0) {
+                    p.damage(4.0);
+                }
+            }
+        }
+    }
+
+    private void destroyNearbyEnemyBeds(org.bukkit.entity.EnderDragon dragon, Arena arena, Team ownerTeam) {
+        for (Team team : arena.getTeams()) {
+            if (!team.getName().equals(ownerTeam.getName()) && !team.isBedBroken()) {
+                Location bedLoc = team.getBedLocation();
+                if (bedLoc != null) {
+                    double distance = dragon.getLocation().distance(bedLoc);
+                    if (distance < 8.0) {
+                        team.setBedBroken(true);
+                        bedLoc.getBlock().setType(org.bukkit.Material.AIR);
+
+                        for (org.bukkit.block.BlockFace face : new org.bukkit.block.BlockFace[]{
+                                org.bukkit.block.BlockFace.NORTH,
+                                org.bukkit.block.BlockFace.SOUTH,
+                                org.bukkit.block.BlockFace.EAST,
+                                org.bukkit.block.BlockFace.WEST
+                        }) {
+                            org.bukkit.block.Block relative = bedLoc.getBlock().getRelative(face);
+                            if (relative.getType().name().contains("BED")) {
+                                relative.setType(org.bukkit.Material.AIR);
+                            }
+                        }
+
+                        String bedMsg = plugin.getLanguageManager().getMessage(null, "interact-bed-destroy-chat");
+                        String ownerColor = (ownerTeam.getColor() != null ? ownerTeam.getColor().toString() : "§f");
+                        String formattedMsg = bedMsg
+                                .replace("{TeamColor}", team.getColor() != null ? team.getColor().toString() : "§f")
+                                .replace("{TeamName}", team.getName())
+                                .replace("{PlayerColor}", ownerColor)
+                                .replace("{PlayerName}", ownerTeam.getName() + " Dragon");
+
+                        for (Player p : arena.getPlayers()) {
+                            p.sendMessage(formattedMsg);
+                            p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 1f);
+
+                            Team playerTeam = getPlayerTeam(arena, p);
+                            if (playerTeam != null && playerTeam.getName().equals(team.getName())) {
+                                String title = plugin.getLanguageManager().getMessage(p.getUniqueId(), "interact-bed-destroy-title");
+                                String subtitle = plugin.getLanguageManager().getMessage(p.getUniqueId(), "interact-bed-destroy-subtitle");
+                                p.sendTitle(title, subtitle, 10, 60, 20);
+                            }
+                        }
+
+                        plugin.getVisualizationManager().spawnGameHolograms(arena);
+                    }
+                }
+            }
+        }
+    }
+
+    public void checkForWin(Arena arena) {
+        if (arena.getState() != Arena.GameState.IN_GAME)
+            return;
+
+        List<Team> aliveTeams = new ArrayList<>();
+        for (Team t : arena.getTeams()) {
+            boolean anyAlive = t.getMembers().stream()
+                    .anyMatch(p -> p.isOnline() && p.getGameMode() != GameMode.SPECTATOR);
+
+            if (anyAlive) {
+                aliveTeams.add(t);
+            } else if (!t.isEliminated()) {
+                t.setEliminated(true);
+                plugin.getVisualizationManager().spawnGameHolograms(arena);
+            }
+        }
+
+        if (aliveTeams.size() <= 1) {
+            if (arena.isSoloTest() && arena.getPlayers().size() <= 1) {
+                return;
+            }
+
+            Team winner = aliveTeams.isEmpty() ? null : aliveTeams.get(0);
+            endGame(arena, winner);
+        }
+    }
+
+    public int getPlayerPickaxeTier(UUID uuid) {
+        return playerPickaxeTiers.getOrDefault(uuid, 0);
+    }
+
+    public void setPlayerPickaxeTier(UUID uuid, int tier) {
+        playerPickaxeTiers.put(uuid, tier);
+    }
+
+    public int getPlayerAxeTier(UUID uuid) {
+        return playerAxeTiers.getOrDefault(uuid, 0);
+    }
+
+    public void setPlayerAxeTier(UUID uuid, int tier) {
+        playerAxeTiers.put(uuid, tier);
+    }
+
+    public void setPlayerArmorTier(Player player, String tier) {
+        playerArmorTiers.put(player.getUniqueId(), tier);
+        Arena arena = getPlayerTeam(plugin.getArenaManager().getPlayerArena(player), player) != null
+                ? plugin.getArenaManager().getPlayerArena(player)
+                : null;
+        if (arena != null) {
+            giveStartingKit(player, getPlayerTeam(arena, player));
+            applyPvpSettings(player, arena);
+        }
+    }
+
+    public void giveStartingKit(Player player, Team team) {
+        if (team == null)
+            return;
+
+        applyTeamUpgrades(player, team);
+
+        int pickTier = playerPickaxeTiers.getOrDefault(player.getUniqueId(), 0);
+        if (pickTier > 0) {
+            removeSimilarItems(player, "_PICKAXE");
+            player.getInventory().addItem(createTool(player, "PICKAXE", pickTier));
+        }
+        int axeTier = playerAxeTiers.getOrDefault(player.getUniqueId(), 0);
+        if (axeTier > 0) {
+            removeSimilarItems(player, "_AXE");
+            player.getInventory().addItem(createTool(player, "AXE", axeTier));
+        }
+
+        String tier = playerArmorTiers.getOrDefault(player.getUniqueId(), "LEATHER");
+        org.bukkit.Color color = getTeamColor(team);
+
+        ItemStack helmet, chestplate, leggings, boots;
+
+        helmet = createColoredArmor(org.bukkit.Material.LEATHER_HELMET, color);
+        chestplate = createColoredArmor(org.bukkit.Material.LEATHER_CHESTPLATE, color);
+
+        if (tier.equals("LEATHER")) {
+            leggings = createColoredArmor(org.bukkit.Material.LEATHER_LEGGINGS, color);
+            boots = createColoredArmor(org.bukkit.Material.LEATHER_BOOTS, color);
+        } else if (tier.equals("CHAIN")) {
+            leggings = new ItemStack(org.bukkit.Material.CHAINMAIL_LEGGINGS);
+            boots = new ItemStack(org.bukkit.Material.CHAINMAIL_BOOTS);
+        } else if (tier.equals("IRON")) {
+            leggings = new ItemStack(org.bukkit.Material.IRON_LEGGINGS);
+            boots = new ItemStack(org.bukkit.Material.IRON_BOOTS);
+        } else {
+            leggings = new ItemStack(org.bukkit.Material.DIAMOND_LEGGINGS);
+            boots = new ItemStack(org.bukkit.Material.DIAMOND_BOOTS);
+        }
+
+        renameItem(player, helmet);
+        renameItem(player, chestplate);
+        renameItem(player, leggings);
+        renameItem(player, boots);
+
+        setUnbreakable(helmet);
+        setUnbreakable(chestplate);
+        setUnbreakable(leggings);
+        setUnbreakable(boots);
+
+        int protLevel = team.getUpgradeLevel("protection");
+        if (protLevel > 0) {
+            helmet.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.PROTECTION_ENVIRONMENTAL, protLevel);
+            chestplate.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.PROTECTION_ENVIRONMENTAL, protLevel);
+            leggings.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.PROTECTION_ENVIRONMENTAL, protLevel);
+            boots.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.PROTECTION_ENVIRONMENTAL, protLevel);
+        }
+
+        player.getInventory().setHelmet(helmet);
+        player.getInventory().setChestplate(chestplate);
+        player.getInventory().setLeggings(leggings);
+        player.getInventory().setBoots(boots);
+
+        boolean hasSword = false;
+        for (ItemStack is : player.getInventory().getContents()) {
+            if (is != null && is.getType().name().endsWith("_SWORD")) {
+                hasSword = true;
+                break;
+            }
+        }
+        if (!hasSword) {
+            ItemStack sword = com.cryptomorin.xseries.XMaterial.WOODEN_SWORD.parseItem();
+            if (sword == null)
+                sword = new ItemStack(Material.STONE);
+            setUnbreakable(sword);
+            renameItem(player, sword);
+            int sharpLevel = team.getUpgradeLevel("sharpness");
+            if (sharpLevel > 0) {
+                sword.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.DAMAGE_ALL, sharpLevel);
+            }
+            player.getInventory().addItem(sword);
+        }
+    }
+
+    public void applyTeamUpgrades(Player player, Team team) {
+        if (team == null)
+            return;
+
+        int sharpLevel = team.getUpgradeLevel("sharpness");
+        if (sharpLevel > 0) {
+            for (ItemStack is : player.getInventory().getContents()) {
+                if (is != null && is.getType().name().endsWith("_SWORD")) {
+                    is.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.DAMAGE_ALL, sharpLevel);
+                }
+            }
+        }
+
+        int protLevel = team.getUpgradeLevel("protection");
+        if (protLevel > 0) {
+            for (ItemStack is : player.getInventory().getArmorContents()) {
+                if (is != null && is.getType() != Material.AIR) {
+                    is.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.PROTECTION_ENVIRONMENTAL, protLevel);
+                }
+            }
+        }
+
+        int hasteLevel = team.getUpgradeLevel("haste");
+        player.removePotionEffect(org.bukkit.potion.PotionEffectType.FAST_DIGGING);
+        if (hasteLevel > 0) {
+            player.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.FAST_DIGGING,
+                    400, hasteLevel - 1, false, false));
+        }
+    }
+
+    private void setUnbreakable(ItemStack item) {
+        if (item == null)
+            return;
+        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setUnbreakable(true);
+            item.setItemMeta(meta);
+        }
+    }
+
+    private void renameItem(Player player, ItemStack item) {
+        if (item == null || item.getType() == Material.AIR)
+            return;
+        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(plugin.getLanguageManager().getItemName(player.getUniqueId(), item.getType()));
+            item.setItemMeta(meta);
+        }
+    }
+
+    private org.bukkit.inventory.ItemStack createColoredArmor(org.bukkit.Material material, org.bukkit.Color color) {
+        org.bukkit.inventory.ItemStack item = new org.bukkit.inventory.ItemStack(material);
+        org.bukkit.inventory.meta.LeatherArmorMeta meta = (org.bukkit.inventory.meta.LeatherArmorMeta) item
+                .getItemMeta();
+        if (meta != null) {
+            meta.setColor(color);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    private org.bukkit.Color getTeamColor(Team team) {
+        if (team.getColor() == null)
+            return org.bukkit.Color.WHITE;
+        switch (team.getColor()) {
+            case RED:
+                return org.bukkit.Color.RED;
+            case BLUE:
+                return org.bukkit.Color.BLUE;
+            case GREEN:
+                return org.bukkit.Color.LIME;
+            case YELLOW:
+                return org.bukkit.Color.YELLOW;
+            case AQUA:
+                return org.bukkit.Color.AQUA;
+            case WHITE:
+                return org.bukkit.Color.WHITE;
+            case LIGHT_PURPLE:
+                return org.bukkit.Color.FUCHSIA;
+            case GRAY:
+            case DARK_GRAY:
+                return org.bukkit.Color.GRAY;
+            default:
+                return org.bukkit.Color.WHITE;
+        }
+    }
+
+    public void endGame(Arena arena, Team winner) {
+        arena.setState(Arena.GameState.ENDING);
+
+        String winnerText = (winner != null)
+                ? (winner.getColor() != null ? winner.getColor().toString() : "§f") + winner.getName()
+                : "§cNONE";
+
+        String winnerColor = (winner != null && winner.getColor() != null) ? winner.getColor().toString() : "§f";
+
+        for (Player p : arena.getPlayers()) {
+            boolean isWinner = winner != null && winner.getMembers().contains(p);
+
+            if (isWinner) {
+                plugin.sendTitle(p,
+                        plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-win-title"),
+                        plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-win-subtitle"),
+                        10, 100, 20);
+                p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+                plugin.getStatsManager().addWin(p.getUniqueId());
+            } else {
+                plugin.sendTitle(p,
+                        plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-over-title"),
+                        plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-over-subtitle")
+                                .replace("%winner%", winnerText),
+                        10, 100, 20);
+                p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 0.5f, 1f);
+                plugin.getStatsManager().addLoss(p.getUniqueId());
+            }
+
+            p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-victory-separator"));
+            p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-victory-title"));
+            p.sendMessage(" ");
+            p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-victory-winner")
+                    .replace("%color%", winnerColor).replace("%winner%", winnerText));
+            p.sendMessage(" ");
+            if (winner != null) {
+                String members = winner.getMembers().stream().map(Player::getName)
+                        .collect(java.util.stream.Collectors.joining(", "));
+                p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-victory-members")
+                        .replace("%members%", members));
+            }
+            p.sendMessage(" ");
+
+            displayTopStats(p, arena);
+
+            p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "game-victory-separator"));
+        }
+
+        for (Player p : arena.getPlayers()) {
+            plugin.getStatsManager().saveStats(p.getUniqueId());
+        }
+
+        new BukkitRunnable() {
+            int count = 0;
+
+            @Override
+            public void run() {
+                if (count >= 5 || arena.getState() != Arena.GameState.ENDING) {
+                    this.cancel();
+                    return;
+                }
+                if (winner != null && winner.getSpawnLocation() != null) {
+                    spawnWinFireworks(winner.getSpawnLocation());
+                }
+                count++;
+            }
+        }.runTaskTimer(plugin, 0L, 20L);
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                List<Player> toKick = new ArrayList<>(arena.getPlayers());
+                for (Player p : toKick) {
+                    plugin.getArenaManager().leaveArena(p);
+                    p.sendMessage(plugin.getLanguageManager().getMessage(p.getUniqueId(), "arena-send-lobby"));
+                }
+
+                cleanupArena(arena);
+                sessionStats.remove(arena);
+                plugin.getVisualizationManager().removeGeneratorVisuals(arena);
+                plugin.getVisualizationManager().removeGameHolograms(arena);
+
+                arena.reset();
+                plugin.getSignManager().updateSigns(arena);
+
+                String worldName = arena.getWorldName();
+                if (worldName != null && !worldName.isEmpty()) {
+                    org.bukkit.World world = org.bukkit.Bukkit.getWorld(worldName);
+                    if (world != null) {
+                        world.getWorldBorder().reset();
+
+                        world.getEntitiesByClass(org.bukkit.entity.EnderDragon.class)
+                                .forEach(org.bukkit.entity.Entity::remove);
+                        world.getEntitiesByClass(org.bukkit.entity.Villager.class)
+                                .forEach(org.bukkit.entity.Entity::remove);
+                        world.getEntitiesByClass(org.bukkit.entity.ArmorStand.class).stream()
+                                .filter(as -> !as.getScoreboardTags().isEmpty())
+                                .forEach(org.bukkit.entity.Entity::remove);
+                        world.getEntitiesByClass(org.bukkit.entity.IronGolem.class).stream()
+                                .filter(e -> e.getScoreboardTags().contains("bw_mob"))
+                                .forEach(org.bukkit.entity.Entity::remove);
+                        world.getEntitiesByClass(org.bukkit.entity.Silverfish.class).stream()
+                                .filter(e -> e.getScoreboardTags().contains("bw_mob"))
+                                .forEach(org.bukkit.entity.Entity::remove);
+                        world.getEntitiesByClass(org.bukkit.entity.Item.class)
+                                .forEach(org.bukkit.entity.Entity::remove);
+
+                        for (Player p : world.getPlayers()) {
+                            Location mainLobby = getMainLobbyLocation();
+                            if (mainLobby != null) {
+                                p.teleport(mainLobby);
+                            } else {
+                                org.bukkit.World defaultWorld = org.bukkit.Bukkit.getWorlds().get(0);
+                                if (defaultWorld != null) {
+                                    p.teleport(defaultWorld.getSpawnLocation());
+                                }
+                            }
+                        }
+
+                        boolean unloaded = org.bukkit.Bukkit.unloadWorld(worldName, false);
+                        if (!unloaded) {
+                            plugin.getLogger().warning(
+                                    "Failed to unload world: " + worldName + ". Retrying after delay...");
+
+                            new BukkitRunnable() {
+                                int attempts = 0;
+
+                                @Override
+                                public void run() {
+                                    attempts++;
+                                    boolean retryUnload = org.bukkit.Bukkit.unloadWorld(worldName, false);
+                                    if (retryUnload) {
+                                        plugin.getLogger().info("Successfully unloaded world on attempt " + attempts);
+                                        this.cancel();
+                                        reloadWorldAndResetArena(arena, worldName);
+                                    } else if (attempts >= 5) {
+                                        plugin.getLogger().severe("Failed to unload world " + worldName + " after "
+                                                + attempts + " attempts. Arena reset may fail!");
+                                        this.cancel();
+                                        plugin.getSignManager().updateSigns(arena);
+                                    }
+                                }
+                            }.runTaskTimer(plugin, 20L, 20L);
+                        } else {
+                            reloadWorldAndResetArena(arena, worldName);
+                        }
+                    } else {
+                        java.io.File worldFolder = new java.io.File(org.bukkit.Bukkit.getWorldContainer(), worldName);
+                        if (worldFolder.exists() && worldFolder.isDirectory()) {
+                            plugin.getLogger().info("World " + worldName + " not loaded, loading from disk...");
+                            org.bukkit.World loadedWorld = org.bukkit.Bukkit.createWorld(
+                                    new org.bukkit.WorldCreator(worldName));
+                            if (loadedWorld != null) {
+                                loadedWorld.setAutoSave(false);
+                                updateArenaLocations(arena, loadedWorld);
+                                plugin.getSignManager().updateSigns(arena);
+                                plugin.getLogger().info("Arena " + arena.getName() + " world loaded successfully.");
+                            } else {
+                                plugin.getLogger().severe("Failed to load world: " + worldName + ". Arena "
+                                        + arena.getName() + " may be in invalid state!");
+                            }
+                        } else {
+                            plugin.getLogger().warning("World folder does not exist: " + worldName
+                                    + ". Arena may have invalid configuration.");
+                        }
+                    }
+                } else {
+                    plugin.getLogger().warning("Arena " + arena.getName() + " has no world assigned!");
+                }
+            }
+        }.runTaskLater(plugin, 200L);
+    }
+
+    public SessionStats getOrCreateSessionStats(Arena arena, UUID uuid) {
+        Map<UUID, SessionStats> arenaStats = sessionStats.computeIfAbsent(arena, k -> new ConcurrentHashMap<>());
+        return arenaStats.computeIfAbsent(uuid, k -> new SessionStats());
+    }
+
+    private void displayTopStats(Player player, Arena arena) {
+        Map<UUID, SessionStats> stats = sessionStats.get(arena);
+        if (stats == null || stats.isEmpty())
+            return;
+
+        player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "game-victory-stats-header"));
+
+        UUID topKiller = stats.entrySet().stream()
+                .max(java.util.Comparator.comparingInt(e -> e.getValue().kills))
+                .map(Map.Entry::getKey).orElse(null);
+        if (topKiller != null && stats.get(topKiller).kills > 0) {
+            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "game-victory-top-kills")
+                    .replace("%player%", org.bukkit.Bukkit.getOfflinePlayer(topKiller).getName())
+                    .replace("%amount%", String.valueOf(stats.get(topKiller).kills)));
+        }
+
+        UUID topFinalKiller = stats.entrySet().stream()
+                .max(java.util.Comparator.comparingInt(e -> e.getValue().finalKills))
+                .map(Map.Entry::getKey).orElse(null);
+        if (topFinalKiller != null && stats.get(topFinalKiller).finalKills > 0) {
+            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "game-victory-top-final-kills")
+                    .replace("%player%", org.bukkit.Bukkit.getOfflinePlayer(topFinalKiller).getName())
+                    .replace("%amount%", String.valueOf(stats.get(topFinalKiller).finalKills)));
+        }
+
+        UUID topBedBreaker = stats.entrySet().stream()
+                .max(java.util.Comparator.comparingInt(e -> e.getValue().bedsBroken))
+                .map(Map.Entry::getKey).orElse(null);
+        if (topBedBreaker != null && stats.get(topBedBreaker).bedsBroken > 0) {
+            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "game-victory-top-beds")
+                    .replace("%player%", org.bukkit.Bukkit.getOfflinePlayer(topBedBreaker).getName())
+                    .replace("%amount%", String.valueOf(stats.get(topBedBreaker).bedsBroken)));
+        }
+    }
+
+    private void spawnWinFireworks(Location loc) {
+        org.bukkit.entity.Firework fw = loc.getWorld().spawn(loc, org.bukkit.entity.Firework.class);
+        org.bukkit.inventory.meta.FireworkMeta fwm = fw.getFireworkMeta();
+        fwm.addEffect(org.bukkit.FireworkEffect.builder()
+                .withColor(org.bukkit.Color.ORANGE, org.bukkit.Color.YELLOW)
+                .withFade(org.bukkit.Color.WHITE)
+                .with(org.bukkit.FireworkEffect.Type.BALL_LARGE)
+                .trail(true)
+                .flicker(true)
+                .build());
+        fwm.setPower(1);
+        fw.setFireworkMeta(fwm);
+    }
+
+    private void removeSimilarItems(Player player, String suffix) {
+        for (int i = 0; i < player.getInventory().getSize(); i++) {
+            ItemStack invItem = player.getInventory().getItem(i);
+            if (invItem != null && invItem.getType().name().endsWith(suffix)) {
+                player.getInventory().setItem(i, null);
+            }
+        }
+    }
+
+    private ItemStack createTool(Player player, String type, int tier) {
+        org.bukkit.Material mat = null;
+        int eff = 1;
+
+        org.bukkit.configuration.ConfigurationSection shopConfig = plugin.getLanguageManager()
+                .getConfig(player.getUniqueId(), "shop");
+        if (shopConfig == null)
+            shopConfig = plugin.getConfigManager().getShopConfig();
+
+        if (shopConfig != null) {
+            String path = "sections.tools.items." + (type.equals("PICKAXE") ? "pickaxe" : "axe") + ".tiers." + tier;
+            org.bukkit.configuration.ConfigurationSection tierData = shopConfig.getConfigurationSection(path);
+            if (tierData != null) {
+                String matName = tierData.getString("material");
+                if (matName != null) {
+                    mat = org.bukkit.Material.matchMaterial(matName);
+                    if (mat == null) {
+                        com.cryptomorin.xseries.XMaterial xmat = com.cryptomorin.xseries.XMaterial
+                                .matchXMaterial(matName).orElse(null);
+                        if (xmat != null)
+                            mat = xmat.parseMaterial();
+                    }
+                }
+
+                org.bukkit.configuration.ConfigurationSection enchants = tierData
+                        .getConfigurationSection("enchantments");
+                if (enchants != null) {
+                    eff = enchants.getInt("DIG_SPEED", 1);
+                }
+            }
+        }
+
+        if (mat == null) {
+            if (type.equals("PICKAXE")) {
+                switch (tier) {
+                    case 1:
+                        mat = com.cryptomorin.xseries.XMaterial.WOODEN_PICKAXE.parseMaterial();
+                        break;
+                    case 2:
+                        mat = org.bukkit.Material.STONE_PICKAXE;
+                        break;
+                    case 3:
+                        mat = org.bukkit.Material.IRON_PICKAXE;
+                        break;
+                    default:
+                        mat = org.bukkit.Material.DIAMOND_PICKAXE;
+                        break;
+                }
+                eff = tier == 3 ? 2 : (tier == 4 ? 3 : 1);
+            } else {
+                switch (tier) {
+                    case 1:
+                        mat = com.cryptomorin.xseries.XMaterial.WOODEN_AXE.parseMaterial();
+                        break;
+                    case 2:
+                        mat = org.bukkit.Material.STONE_AXE;
+                        break;
+                    case 3:
+                        mat = org.bukkit.Material.IRON_AXE;
+                        break;
+                    default:
+                        mat = org.bukkit.Material.DIAMOND_AXE;
+                        break;
+                }
+                eff = tier == 3 ? 2 : (tier == 4 ? 3 : 1);
+            }
+        }
+
+        ItemStack item = new ItemStack(mat);
+        renameItem(player, item);
+        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setUnbreakable(true);
+            meta.addEnchant(org.bukkit.enchantments.Enchantment.DIG_SPEED, eff, true);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    public void applyPvpSettings(Player player, Arena arena) {
+        org.bukkit.attribute.AttributeInstance attackSpeed = player
+                .getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_SPEED);
+        if (attackSpeed == null)
+            return;
+
+        if (arena != null) {
+            if (arena.getPvpMode() == Arena.PvpMode.LEGACY_1_8) {
+                attackSpeed.setBaseValue(1024.0);
+
+                player.getInventory().remove(org.bukkit.Material.SHIELD);
+
+                try {
+                    org.bukkit.attribute.AttributeInstance sweepAttr = player
+                            .getAttribute(org.bukkit.attribute.Attribute.valueOf("SWEEPING_DAMAGE_RATIO"));
+                    if (sweepAttr != null) {
+                        sweepAttr.setBaseValue(0.0);
+                    }
+                } catch (Throwable ignored) {
+                }
+            } else {
+                attackSpeed.setBaseValue(4.0);
+            }
+        } else {
+            attackSpeed.setBaseValue(4.0);
+        }
+    }
+
+    private void updateArenaLocations(Arena arena, org.bukkit.World newWorld) {
+        if (arena.getLobbyLocation() != null) {
+            arena.setLobbyLocation(updateLocation(arena.getLobbyLocation(), newWorld));
+        }
+        if (arena.getPos1() != null) {
+            arena.setPos1(updateLocation(arena.getPos1(), newWorld));
+        }
+        if (arena.getPos2() != null) {
+            arena.setPos2(updateLocation(arena.getPos2(), newWorld));
+        }
+
+        java.util.List<org.bukkit.Location> updatedDiamond = new java.util.ArrayList<>();
+        for (org.bukkit.Location loc : arena.getDiamondGenerators()) {
+            updatedDiamond.add(updateLocation(loc, newWorld));
+        }
+        arena.getDiamondGenerators().clear();
+        arena.getDiamondGenerators().addAll(updatedDiamond);
+
+        java.util.List<org.bukkit.Location> updatedEmerald = new java.util.ArrayList<>();
+        for (org.bukkit.Location loc : arena.getEmeraldGenerators()) {
+            updatedEmerald.add(updateLocation(loc, newWorld));
+        }
+        arena.getEmeraldGenerators().clear();
+        arena.getEmeraldGenerators().addAll(updatedEmerald);
+
+        for (Team team : arena.getTeams()) {
+            if (team.getSpawnLocation() != null) {
+                team.setSpawnLocation(updateLocation(team.getSpawnLocation(), newWorld));
+            }
+            if (team.getBedLocation() != null) {
+                team.setBedLocation(updateLocation(team.getBedLocation(), newWorld));
+            }
+            if (team.getShopLocation() != null) {
+                team.setShopLocation(updateLocation(team.getShopLocation(), newWorld));
+            }
+            if (team.getUpgradeLocation() != null) {
+                team.setUpgradeLocation(updateLocation(team.getUpgradeLocation(), newWorld));
+            }
+            if (team.getBasePos1() != null) {
+                team.setBasePos1(updateLocation(team.getBasePos1(), newWorld));
+            }
+            if (team.getBasePos2() != null) {
+                team.setBasePos2(updateLocation(team.getBasePos2(), newWorld));
+            }
+
+            java.util.List<org.bukkit.Location> updatedTeamGens = new java.util.ArrayList<>();
+            for (org.bukkit.Location loc : team.getGenerators()) {
+                updatedTeamGens.add(updateLocation(loc, newWorld));
+            }
+            team.getGenerators().clear();
+            team.getGenerators().addAll(updatedTeamGens);
+        }
+    }
+
+    private org.bukkit.Location updateLocation(org.bukkit.Location old, org.bukkit.World newWorld) {
+        if (old == null)
+            return null;
+        return new org.bukkit.Location(newWorld, old.getX(), old.getY(), old.getZ(), old.getYaw(), old.getPitch());
+    }
+
+    private void reloadWorldAndResetArena(Arena arena, String worldName) {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                org.bukkit.World existingWorld = org.bukkit.Bukkit.getWorld(worldName);
+                if (existingWorld != null) {
+                    plugin.getLogger().warning(
+                            "World " + worldName + " is still loaded, cannot reload. Trying to update references...");
+                    updateArenaLocations(arena, existingWorld);
+                    plugin.getSignManager().updateSigns(arena);
+                    return;
+                }
+
+                java.io.File worldFolder = new java.io.File(org.bukkit.Bukkit.getWorldContainer(), worldName);
+                if (!worldFolder.exists() || !worldFolder.isDirectory()) {
+                    plugin.getLogger().severe("World folder does not exist: " + worldName + ". Cannot reload arena!");
+                    plugin.getSignManager().updateSigns(arena);
+                    return;
+                }
+
+                try {
+                    org.bukkit.World reloadedWorld = org.bukkit.Bukkit.createWorld(
+                            new org.bukkit.WorldCreator(worldName));
+
+                    if (reloadedWorld == null) {
+                        plugin.getLogger()
+                                .severe("Failed to reload world: " + worldName + ". Arena may be in invalid state!");
+                        plugin.getSignManager().updateSigns(arena);
+                        return;
+                    }
+
+                    reloadedWorld.setAutoSave(false);
+                    prepareWorldRules(reloadedWorld);
+
+                    updateArenaLocations(arena, reloadedWorld);
+
+                    if (arena.getLobbyLocation() == null || arena.getLobbyLocation().getWorld() == null) {
+                        plugin.getLogger()
+                                .warning("Arena " + arena.getName() + " lobby location is invalid after world reload!");
+                    }
+
+                    plugin.getSignManager().updateSigns(arena);
+                    plugin.getLogger().info("Arena " + arena.getName() + " world reloaded successfully.");
+                } catch (Exception e) {
+                    plugin.getLogger().severe("Error reloading world " + worldName + ": " + e.getMessage());
+                    e.printStackTrace();
+                    plugin.getSignManager().updateSigns(arena);
+                }
+            }
+        }.runTaskLater(plugin, 60L);
+    }
+
+    public Location getMainLobbyLocation() {
+        String lobbyStr = plugin.getDatabaseManager().getSetting("main_lobby");
+        if (lobbyStr != null && !lobbyStr.isEmpty()) {
+            return me.horiciastko.bedwars.utils.SerializationUtils.stringToLocation(lobbyStr);
+        }
+        return null;
+    }
+
+    public void setMainLobbyLocation(Location loc) {
+        if (loc == null)
+            return;
+        String lobbyStr = me.horiciastko.bedwars.utils.SerializationUtils.locationToString(loc);
+        plugin.getDatabaseManager().setSetting("main_lobby", lobbyStr);
+        prepareWorldRules(loc.getWorld());
+    }
+
+    public void prepareWorldRules(org.bukkit.World world) {
+        if (world == null)
+            return;
+
+        world.setGameRuleValue("doDaylightCycle", "false");
+        world.setGameRuleValue("doWeatherCycle", "false");
+        world.setGameRuleValue("doMobSpawning", "false");
+        world.setGameRuleValue("showDeathMessages", "false");
+
+        try {
+            world.setGameRuleValue("announceAdvancements", "false");
+        } catch (Exception ignored) {
+        }
+    }
+}
