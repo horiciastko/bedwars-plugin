@@ -86,7 +86,7 @@ public class BedWars extends JavaPlugin {
         saveDefaultConfig();
 
         me.horiciastko.bedwars.utils.ServerVersion version = me.horiciastko.bedwars.utils.ServerVersion.getCurrent();
-        logger.info("[BedWars] Detected Server Version: " + org.bukkit.Bukkit.getBukkitVersion() + " (Mapped: "
+        logger.info("Detected Server Version: " + org.bukkit.Bukkit.getBukkitVersion() + " (Mapped: "
                 + version.name() + ")");
 
         this.configManager = new ConfigManager(this);
@@ -129,8 +129,17 @@ public class BedWars extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new me.horiciastko.bedwars.listeners.SelectionWandListener(this),
                 this);
         getServer().getPluginManager().registerEvents(new me.horiciastko.bedwars.listeners.NPCListener(this), this);
+        
+        if (supportManager.isCitizensEnabled()) {
+            try {
+                getServer().getPluginManager().registerEvents(new me.horiciastko.bedwars.listeners.CitizensNPCListener(this), this);
+                logger.info("[BedWars] Citizens NPC listener registered successfully!");
+            } catch (NoClassDefFoundError e) {
+                logger.warning("[BedWars] Citizens detected but listener registration failed: " + e.getMessage());
+            }
+        }
 
-        logger.info("[BedWars] Plugin enabled successfully! Version: " + getDescription().getVersion());
+        logger.info("Plugin enabled successfully! Version: " + getDescription().getVersion());
     }
 
     @Override

@@ -80,6 +80,12 @@ public class AdminCommand implements SubCommand {
             plugin.getConfigManager().reloadAll();
             plugin.getLanguageManager().setPlayerLanguage(player.getUniqueId(), targetLang);
             plugin.getNpcManager().refreshAllNPCs();
+            
+            for (Arena arena : plugin.getArenaManager().getArenas()) {
+                if (arena.getState() == Arena.GameState.IN_GAME) {
+                    plugin.getVisualizationManager().spawnGeneratorVisuals(arena);
+                }
+            }
 
             player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-lang-set")
                 .replace("%lang%", targetLang));
@@ -109,6 +115,24 @@ public class AdminCommand implements SubCommand {
             }
 
             if (args[2].equalsIgnoreCase("remove")) {
+                if (args.length >= 4) {
+                    try {
+                        int npcId = Integer.parseInt(args[3]);
+                        boolean removed = plugin.getNpcManager().removeNPCById(npcId);
+                        
+                        if (removed) {
+                            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-removed-by-id")
+                                .replace("%id%", String.valueOf(npcId)));
+                        } else {
+                            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-id-not-found")
+                                .replace("%id%", String.valueOf(npcId)));
+                        }
+                    } catch (NumberFormatException e) {
+                        player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-invalid-id"));
+                    }
+                    return;
+                }
+                
                 me.horiciastko.bedwars.npc.BedWarsNPC nearest = null;
 
                 org.bukkit.entity.Entity target = player.getTargetEntity(5);

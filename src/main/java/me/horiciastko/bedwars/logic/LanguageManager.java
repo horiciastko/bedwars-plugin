@@ -30,7 +30,6 @@ public class LanguageManager {
             langDir.mkdirs();
         }
 
-        // Extract bundled language files from JAR
         String[] bundledLanguages = { "en", "pl" };
         for (String iso : bundledLanguages) {
             File dir = new File(langDir, iso);

@@ -58,36 +58,50 @@ public class NPCListener implements Listener {
             }
         }
     }
+
     private void handleNpcClick(Player player, String type) {
-        if (type.equalsIgnoreCase("shop")) {
+        String actionType = type.toLowerCase();
+        
+        if (actionType.equalsIgnoreCase("shop")) {
             new me.horiciastko.bedwars.gui.ShopGUI().open(player);
-        } else if (type.equalsIgnoreCase("upgrades")) {
-            new me.horiciastko.bedwars.gui.UpgradeGUI().open(player);
-        } else {
-            String modeStr = plugin.getNpcManager().getConfig().getString("types." + type + ".mode");
-            if (modeStr != null) {
-                try {
-                    me.horiciastko.bedwars.models.Arena.ArenaMode mode = me.horiciastko.bedwars.models.Arena.ArenaMode
-                            .valueOf(modeStr.toUpperCase());
-                    joinQuickGame(player, mode);
-                } catch (IllegalArgumentException e) {
-                    player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "npc-invalid-mode").replace("%mode%", modeStr));
-                }
-            }
+            return;
         }
-    }
-
-    private void joinQuickGame(Player player, me.horiciastko.bedwars.models.Arena.ArenaMode mode) {
-        me.horiciastko.bedwars.models.Arena target = plugin.getArenaManager().getArenas().stream()
-                .filter(a -> a.getMode() == mode
-                        && a.getState() == me.horiciastko.bedwars.models.Arena.GameState.WAITING && a.isEnabled())
-                .filter(a -> a.getPlayers().size() < a.getMaxPlayers())
-                .findFirst().orElse(null);
-
-        if (target != null) {
-            plugin.getArenaManager().joinArena(player, target);
-        } else {
-            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "npc-no-games").replace("%mode%", mode.getDisplayName()));
+        if (actionType.equalsIgnoreCase("upgrades")) {
+            new me.horiciastko.bedwars.gui.UpgradeGUI().open(player);
+            return;
+        }
+        
+        if (actionType.equalsIgnoreCase("join") || actionType.equalsIgnoreCase("play")) {
+            new me.horiciastko.bedwars.gui.JoinGUI().open(player);
+            return;
+        }
+        
+        if (actionType.equalsIgnoreCase("solo")) {
+            new me.horiciastko.bedwars.gui.ArenaSelectorGUI(me.horiciastko.bedwars.models.Arena.ArenaMode.SOLO).open(player);
+            return;
+        }
+        if (actionType.equalsIgnoreCase("duo") || actionType.equalsIgnoreCase("doubles")) {
+            new me.horiciastko.bedwars.gui.ArenaSelectorGUI(me.horiciastko.bedwars.models.Arena.ArenaMode.DUO).open(player);
+            return;
+        }
+        if (actionType.equalsIgnoreCase("trio") || actionType.equalsIgnoreCase("3v3v3v3")) {
+            new me.horiciastko.bedwars.gui.ArenaSelectorGUI(me.horiciastko.bedwars.models.Arena.ArenaMode.TRIO).open(player);
+            return;
+        }
+        if (actionType.equalsIgnoreCase("quad") || actionType.equalsIgnoreCase("squad") || actionType.equalsIgnoreCase("4v4v4v4")) {
+            new me.horiciastko.bedwars.gui.ArenaSelectorGUI(me.horiciastko.bedwars.models.Arena.ArenaMode.SQUAD).open(player);
+            return;
+        }
+        
+        String modeStr = plugin.getNpcManager().getConfig().getString("types." + type + ".mode");
+        if (modeStr != null) {
+            try {
+                me.horiciastko.bedwars.models.Arena.ArenaMode mode = me.horiciastko.bedwars.models.Arena.ArenaMode
+                        .valueOf(modeStr.toUpperCase());
+                new me.horiciastko.bedwars.gui.ArenaSelectorGUI(mode).open(player);
+            } catch (IllegalArgumentException e) {
+                player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "npc-invalid-mode").replace("%mode%", modeStr));
+            }
         }
     }
 }

@@ -553,6 +553,21 @@ public class VanillaNPCImpl implements BedWarsNPC {
         }
         hologramLines.clear();
 
+        Location npcLoc = getLocation();
+        if (npcLoc != null && npcLoc.getWorld() != null) {
+            npcLoc.getWorld().getNearbyEntities(npcLoc, 2.0, 3.0, 2.0).forEach(entity -> {
+                if (entity instanceof ArmorStand) {
+                    ArmorStand stand = (ArmorStand) entity;
+                    try {
+                        if (stand.getScoreboardTags().contains("bw_npc_hologram")) {
+                            stand.remove();
+                        }
+                    } catch (NoSuchMethodError ignored) {
+                    }
+                }
+            });
+        }
+
         if (entityUUID != null) {
             plugin.getNpcManager().unregisterEntity(entityUUID);
         }

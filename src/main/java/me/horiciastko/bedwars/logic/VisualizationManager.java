@@ -212,7 +212,8 @@ public class VisualizationManager {
         List<ArmorStand> stands = new ArrayList<>();
         org.bukkit.configuration.file.FileConfiguration config = plugin.getConfigManager().getGeneratorConfig();
 
-        String dName = config.getString("global_generators.diamond.name", "§b§lDIAMOND");
+        String dName = org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                config.getString("global_generators.diamond.name", "§b§lDIAMOND"));
         org.bukkit.Material dBlock = com.cryptomorin.xseries.XMaterial
                 .matchXMaterial(config.getString("global_generators.diamond.block", "DIAMOND_BLOCK")).get()
                 .parseMaterial();
@@ -220,7 +221,8 @@ public class VisualizationManager {
             stands.addAll(createGeneratorVisual(loc, dName, dBlock));
         }
 
-        String eName = config.getString("global_generators.emerald.name", "§2§lEMERALD");
+        String eName = org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                config.getString("global_generators.emerald.name", "§2§lEMERALD"));
         org.bukkit.Material eBlock = com.cryptomorin.xseries.XMaterial
                 .matchXMaterial(config.getString("global_generators.emerald.block", "EMERALD_BLOCK")).get()
                 .parseMaterial();
