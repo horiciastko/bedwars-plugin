@@ -108,7 +108,7 @@ Data persisted in DB includes:
 - standalone NPC data
 
 
-##Languages
+## Languages
 
 - English
 - Polish
