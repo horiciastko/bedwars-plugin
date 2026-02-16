@@ -129,13 +129,21 @@ public class GeneratorTask extends BukkitRunnable {
                 java.util.Map<?, ?> currentEvent = events.get(arena.getEventIndex());
                 String eventId = (String) currentEvent.get("id");
 
-                plugin.getGameManager().triggerGameEvent(arena, eventId);
+                if (eventId != null) {
+                    plugin.getGameManager().triggerGameEvent(arena, eventId);
+                }
 
                 arena.setEventIndex(arena.getEventIndex() + 1);
 
                 if (arena.getEventIndex() < events.size()) {
                     java.util.Map<?, ?> nextEvent = events.get(arena.getEventIndex());
-                    arena.setEventTimer((int) nextEvent.get("duration"));
+                    Object durationObj = nextEvent.get("duration");
+                    if (durationObj instanceof Integer) {
+                        arena.setEventTimer((int) durationObj);
+                    } else {
+                        plugin.getLogger().warning("Event at index " + arena.getEventIndex() + " is missing 'duration' field, using default 360 seconds");
+                        arena.setEventTimer(360);
+                    }
                 } else {
                     arena.setEventTimer(-1);
                 }
@@ -284,16 +292,15 @@ public class GeneratorTask extends BukkitRunnable {
             if (stand.getScoreboardTags().contains("bw_gen_visual")) {
                 stand.setHeadPose(angle);
             } else if (stand.getScoreboardTags().contains("bw_gen_timer")) {
-                if (arena.getTicks() == 0) {
-                    boolean isDiamond = false;
-                    for (Location dLoc : arena.getDiamondGenerators()) {
-                        double dX = dLoc.getX() + 0.5 - stand.getLocation().getX();
-                        double dZ = dLoc.getZ() + 0.5 - stand.getLocation().getZ();
-                        if ((dX * dX + dZ * dZ) < 1.0) {
-                            isDiamond = true;
-                            break;
-                        }
+                boolean isDiamond = false;
+                for (Location dLoc : arena.getDiamondGenerators()) {
+                    double dX = dLoc.getX() + 0.5 - stand.getLocation().getX();
+                    double dZ = dLoc.getZ() + 0.5 - stand.getLocation().getZ();
+                    if ((dX * dX + dZ * dZ) < 1.0) {
+                        isDiamond = true;
+                        break;
                     }
+                }
 
                     int cooldown = isDiamond ? arena.getDiamondCooldown() : arena.getEmeraldCooldown();
                     int tier = isDiamond ? arena.getDiamondTier() : arena.getEmeraldTier();
@@ -341,8 +348,7 @@ public class GeneratorTask extends BukkitRunnable {
                         stand.setCustomName(timerFmt.replace("%seconds%", String.valueOf(remaining)));
                     }
 
-                    updateNameHologram(arena, stand, isDiamond, tier);
-                }
+                updateNameHologram(arena, stand, isDiamond, tier);
             }
         }
     }

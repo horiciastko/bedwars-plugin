@@ -363,7 +363,13 @@ public class GameManager {
         org.bukkit.configuration.file.FileConfiguration gConfig = plugin.getConfigManager().getGeneratorConfig();
         java.util.List<Map<?, ?>> events = gConfig.getMapList("events");
         if (!events.isEmpty()) {
-            arena.setEventTimer((int) events.get(0).get("duration"));
+            Object durationObj = events.get(0).get("duration");
+            if (durationObj instanceof Integer) {
+                arena.setEventTimer((int) durationObj);
+            } else {
+                plugin.getLogger().warning("First event in arena " + arena.getName() + " is missing 'duration' field, using default 360 seconds");
+                arena.setEventTimer(360);
+            }
         }
 
         plugin.getSignManager().updateSigns(arena);
@@ -712,6 +718,11 @@ public class GameManager {
     }
 
     public void triggerGameEvent(Arena arena, String eventId) {
+        if (eventId == null) {
+            plugin.getLogger().warning("Attempted to trigger game event with null eventId for arena: " + arena.getName());
+            return;
+        }
+        
         org.bukkit.configuration.file.FileConfiguration gConfig = plugin.getConfigManager().getGeneratorConfig();
         String broadcastFmt = gConfig.getString("messages.upgrade_broadcast",
                 "§b§l%type% GENERATORS §eUPGRADED TO §6§lTIER %tier%");

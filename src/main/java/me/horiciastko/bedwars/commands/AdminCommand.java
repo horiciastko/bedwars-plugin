@@ -80,6 +80,12 @@ public class AdminCommand implements SubCommand {
             plugin.getConfigManager().reloadAll();
             plugin.getLanguageManager().setPlayerLanguage(player.getUniqueId(), targetLang);
             plugin.getNpcManager().refreshAllNPCs();
+            
+            for (Arena arena : plugin.getArenaManager().getArenas()) {
+                if (arena.getState() == Arena.GameState.IN_GAME) {
+                    plugin.getVisualizationManager().spawnGeneratorVisuals(arena);
+                }
+            }
 
             player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-lang-set")
                 .replace("%lang%", targetLang));
