@@ -48,7 +48,7 @@ public class TeamSettingsGUI extends BaseGUI {
                 .setLore("§7Current: " + formatLocation(team.getBedLocation()),
                         "",
                         "§eClick §7to auto-detect nearby bed",
-                        "§7(within 5 blocks)")
+                        "§7(within 10 blocks)")
                 .build());
 
         inventory.setItem(12, new ItemBuilder(Material.IRON_BLOCK)
@@ -171,7 +171,7 @@ public class TeamSettingsGUI extends BaseGUI {
                 save = true;
                 break;
             case 11:
-                Block bed = findNearbyBed(player.getLocation(), 5);
+                Block bed = findNearbyBed(player.getLocation(), 10);
                 if (bed != null) {
                     team.setBedLocation(bed.getLocation());
                     player.sendMessage(BedWars.getInstance().getLanguageManager().getMessage(player.getUniqueId(), "team-bed-detected").replace("%location%", formatLocation(bed.getLocation())));

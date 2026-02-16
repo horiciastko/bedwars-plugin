@@ -183,6 +183,24 @@ public class NPCManager {
         npc.remove();
     }
 
+    public boolean removeNPCById(int id) {
+        BedWarsNPC targetNPC = null;
+        
+        for (Map.Entry<BedWarsNPC, Integer> entry : standaloneNpcIds.entrySet()) {
+            if (entry.getValue() == id) {
+                targetNPC = entry.getKey();
+                break;
+            }
+        }
+        
+        if (targetNPC != null) {
+            removeNPC(targetNPC);
+            return true;
+        }
+        
+        return false;
+    }
+
     private void cleanupOrphanedHolograms() {
         int removed = 0;
         for (org.bukkit.World world : org.bukkit.Bukkit.getWorlds()) {
@@ -221,20 +239,24 @@ public class NPCManager {
         
         if (plugin.getSupportManager().isCitizensEnabled()) {
             try {
-                net.citizensnpcs.api.CitizensAPI.getNPCRegistry().forEach(npc -> {
-                    try {
-                        if (npc.hasTrait(net.citizensnpcs.api.trait.Trait.class)) {
-                            for (net.citizensnpcs.api.trait.Trait trait : npc.getTraits()) {
-                                if (trait.getName().startsWith("bw_")) {
-                                    npc.destroy();
-                                    removed.incrementAndGet();
-                                    return;
-                                }
+                java.util.List<net.citizensnpcs.api.npc.NPC> npcsToRemove = new java.util.ArrayList<>();
+                
+                for (net.citizensnpcs.api.npc.NPC npc : net.citizensnpcs.api.CitizensAPI.getNPCRegistry()) {
+                    if (npc.getEntity() != null) {
+                        try {
+                            if (npc.getEntity().getScoreboardTags().contains("bw_npc")) {
+                                npcsToRemove.add(npc);
                             }
+                        } catch (Exception ignored) {
                         }
-                    } catch (Exception ignored) {
                     }
-                });
+                }
+                
+                for (net.citizensnpcs.api.npc.NPC npc : npcsToRemove) {
+                    npc.destroy();
+                    removed.incrementAndGet();
+                }
+                
             } catch (Exception e) {
                 plugin.getLogger().warning("Could not cleanup Citizens NPCs: " + e.getMessage());
             }

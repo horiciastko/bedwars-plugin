@@ -60,6 +60,9 @@ public class CitizensNPCImpl implements BedWarsNPC {
             try {
                 net.citizensnpcs.trait.HologramTrait holo = npc
                         .getOrAddTrait(net.citizensnpcs.trait.HologramTrait.class);
+                
+                holo.clear();
+                
                 for (String line : descriptionLines) {
                     holo.addLine(line);
                 }
@@ -77,14 +80,10 @@ public class CitizensNPCImpl implements BedWarsNPC {
             plugin.getNpcManager().registerEntity(npc.getEntity().getUniqueId(), this);
         }
 
-        npc.addTrait(new net.citizensnpcs.api.trait.Trait("bw_" + type) {
-            @org.bukkit.event.EventHandler
-            public void onRightClick(net.citizensnpcs.api.event.NPCRightClickEvent event) {
-                if (event.getNPC() == this.getNPC()) {
-                    onClick(event.getClicker());
-                }
-            }
-        });
+        // Add a trait to identify this as a BedWars NPC of specific type
+        // The NPCListener will handle click events
+        net.citizensnpcs.api.trait.Trait identifierTrait = new net.citizensnpcs.api.trait.Trait("bw_" + type) {};
+        npc.addTrait(identifierTrait);
     }
 
     @Override

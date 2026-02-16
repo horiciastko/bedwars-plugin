@@ -115,6 +115,26 @@ public class AdminCommand implements SubCommand {
             }
 
             if (args[2].equalsIgnoreCase("remove")) {
+                // Check if ID argument is provided: /bw admin npc remove <ID>
+                if (args.length >= 4) {
+                    try {
+                        int npcId = Integer.parseInt(args[3]);
+                        boolean removed = plugin.getNpcManager().removeNPCById(npcId);
+                        
+                        if (removed) {
+                            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-removed-by-id")
+                                .replace("%id%", String.valueOf(npcId)));
+                        } else {
+                            player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-id-not-found")
+                                .replace("%id%", String.valueOf(npcId)));
+                        }
+                    } catch (NumberFormatException e) {
+                        player.sendMessage(plugin.getLanguageManager().getMessage(player.getUniqueId(), "admin-npc-invalid-id"));
+                    }
+                    return;
+                }
+                
+                // Original behavior: remove by looking at NPC
                 me.horiciastko.bedwars.npc.BedWarsNPC nearest = null;
 
                 org.bukkit.entity.Entity target = player.getTargetEntity(5);

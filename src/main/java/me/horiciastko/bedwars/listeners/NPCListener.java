@@ -11,6 +11,10 @@ import org.bukkit.inventory.EquipmentSlot;
 
 import java.util.Set;
 
+/**
+ * Listener for vanilla NPC entity interactions.
+ * For Citizens NPCs, see CitizensNPCListener.
+ */
 public class NPCListener implements Listener {
 
     private final BedWars plugin;
@@ -58,6 +62,7 @@ public class NPCListener implements Listener {
             }
         }
     }
+
     private void handleNpcClick(Player player, String type) {
         String actionType = type.toLowerCase();
         
