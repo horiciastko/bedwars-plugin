@@ -19,28 +19,28 @@ A modern BedWars plugin for Spigot/Paper/Purpur servers with arenas, teams, gene
 ### Lobby & NPCs
 
 <p align="center">
-  <img src="screenshots/npc.gif" width="45%" alt="Lobby Join NPC">
-  <img src="screenshots/countdown.gif" width="45%" alt="Game Countdown">
+  <img src="screenshots/npc_github.gif" width="45%" alt="Lobby Join NPC">
+  <img src="screenshots/countdown_github.gif" width="45%" alt="Game Countdown">
 </p>
 
 ### In-Game Features
 
 <p align="center">
-  <img src="screenshots/shop.gif" width="30%" alt="Shop NPC">
-  <img src="screenshots/upgrade.gif" width="30%" alt="Upgrades NPC">
-  <img src="screenshots/tnt.gif" width="30%" alt="TNT Jump">
+  <img src="screenshots/shop_github.gif" width="30%" alt="Shop NPC">
+  <img src="screenshots/upgrade_github.gif" width="30%" alt="Upgrades NPC">
+  <img src="screenshots/tnt_github.gif" width="30%" alt="TNT Jump">
 </p>
 
 ### Death & Respawn
 
 <p align="center">
-  <img src="screenshots/died.png" width="60%" alt="Death Screen">
+  <img src="screenshots/died_github.png" width="60%" alt="Death Screen">
 </p>
 
 ### Arena Setup
 
 <p align="center">
-  <img src="screenshots/setup.png" width="30%" alt="Arena Setup GUI">
+  <img src="screenshots/setup_github.png" width="30%" alt="Arena Setup GUI">
 </p>
 
 ## Key Features
